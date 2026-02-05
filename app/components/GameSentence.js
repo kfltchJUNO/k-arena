@@ -2,172 +2,116 @@
 import { useState, useEffect } from "react";
 
 export default function GameSentence({ onBack, pastSentences = [] }) {
-  const [quizList, setQuizList] = useState([]);
+  const [list, setList] = useState([]);
   const [idx, setIdx] = useState(0);
-  const [userSelect, setUserSelect] = useState([]);
+  const [shuffledParts, setShuffledParts] = useState([]);
+  const [userOrder, setUserOrder] = useState([]);
   const [score, setScore] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // 5문장 배치 로딩
   const loadBatch = async () => {
     setLoading(true);
+    // 난이도 조절: 5문제 이상 풀면 더 긴 문장 출제
+    const difficulty = idx > 4 ? "중급 수준의 5~7어절 문장" : "초급 수준의 3~4어절 문장";
+    
     try {
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: `한국어 문장 퍼즐 5개를 만들어.
-          
-          [조건]
-          1. 초등~중학생 수준의 3~5어절 문장.
-          2. 이미 낸 문장(${JSON.stringify(pastSentences)}) 제외.
-          3. JSON 배열: [{ "sentence": "나는 학교에 간다", "parts": ["학교에", "간다", "나는"] }, ...]
-          parts는 순서를 무작위로 섞어서 줘.`
+          prompt: `한국어 문장 퍼즐 5개를 만들어줘.
+          조건: ${difficulty}. 점점 어렵게. 이미 낸 문장(${JSON.stringify(pastSentences)}) 제외.
+          응답: [{ "sentence": "나는 학교에 간다", "parts": ["학교에", "간다", "나는"] }, ...]`
         })
       });
       const data = await res.json();
-      const text = data.text.replace(/```json/g, "").replace(/```/g, "").trim();
-      const parsed = JSON.parse(text.match(/\[.*\]/s)[0]);
-      setQuizList(prev => [...prev, ...parsed]);
+      const text = data.text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(text);
+      setList(prev => [...prev, ...parsed]);
       setLoading(false);
     } catch (e) {
-      setQuizList(prev => [...prev, {sentence:"나는 밥을 먹었다", parts:["먹었다","나는","밥을"]}]);
+      setList(prev => [...prev, { sentence: "날씨가 매우 좋습니다", parts: ["매우", "좋습니다", "날씨가"] }]);
       setLoading(false);
     }
   };
 
   useEffect(() => { loadBatch(); }, []);
 
-  // 단어 선택 (자동 채점 기능 제거 -> 버튼으로 변경)
-  const handleSelect = (part) => {
-    setUserSelect([...userSelect, part]);
-  };
+  useEffect(() => {
+    if (list.length > 0 && list[idx]) {
+      setShuffledParts([...list[idx].parts].sort(() => Math.random() - 0.5));
+      setUserOrder([]);
+    }
+  }, [idx, list]);
 
-  // ★ 제출 버튼 클릭 시 채점
-  const checkAnswer = () => {
-    if (userSelect.length === 0) return;
-
-    // 공백 제거 후 비교 (단순 순서 확인)
-    const current = userSelect.join("");
-    const target = quizList[idx].sentence.replace(/ /g, "");
-    
-    if (current === target) {
-      setScore(s => s + 20);
-      alert("정답입니다! 👏");
-      nextQuiz();
+  const selectPart = (part) => {
+    if (userOrder.includes(part)) {
+      setUserOrder(userOrder.filter(p => p !== part));
     } else {
-      alert("틀렸습니다! 순서를 다시 생각해보세요.");
-      setUserSelect([]); // 틀리면 초기화
+      setUserOrder([...userOrder, part]);
     }
   };
 
-  const nextQuiz = () => {
-    setUserSelect([]);
-    if (idx + 1 < quizList.length) {
-      setIdx(i => i + 1);
-      // 미리 로딩
-      if (quizList.length - (idx + 1) < 2) loadBatch();
-    } else { 
-      alert("새로운 문장을 가져옵니다!"); 
-      loadBatch(); 
-      setIdx(i => i + 1); 
+  const checkAnswer = () => {
+    const current = list[idx];
+    const userAnswer = userOrder.join(" ");
+    
+    // 공백 제거 후 비교 (유연성)
+    if (userAnswer.replace(/\s/g, "") === current.sentence.replace(/\s/g, "")) {
+      alert("정답입니다! ⭕");
+      setScore(s => s + 20);
+      
+      if (idx + 1 < list.length) {
+        setIdx(idx + 1);
+        if (list.length - (idx + 1) < 2) loadBatch();
+      } else {
+        alert("모든 문제를 풀었습니다!");
+        onBack(list, score + 20, false);
+      }
+    } else {
+      alert("틀렸습니다! 다시 해보세요.");
+      setUserOrder([]);
     }
   };
 
-  if (quizList.length === 0 || !quizList[idx]) return <div className="result-box"><h3>문장 조각을 섞는 중...</h3></div>;
-  const quiz = quizList[idx];
+  if (loading && list.length === 0) return <div className="result-box"><h3>문장 로딩 중...</h3></div>;
+  if (!list[idx]) return null;
 
   return (
     <div className="game-container">
       <div className="header">
-        <button onClick={() => onBack([], score)}>나가기</button> 
-        <span>{score}점</span>
+        <button onClick={() => onBack(list.slice(0, idx), score, true)}>나가기</button>
+        <span>문제 {idx + 1} | {score}점</span>
       </div>
-      
+
       <div className="quiz-card" style={{justifyContent:'flex-start', paddingTop:'40px'}}>
-        <h3>🧩 문장 조각 맞추기 ({idx+1}번)</h3>
+        <h3 style={{marginBottom:'20px'}}>문장을 완성하세요</h3>
         
-        {/* 완성된 문장이 보이는 곳 */}
-        <div style={{
-          minHeight:'80px', 
-          borderBottom:'3px solid #eee', 
-          width:'90%', 
-          margin:'30px auto', 
-          fontSize:'1.5rem', 
-          fontWeight:'bold', 
-          lineHeight:'1.5',
-          color: '#2d3436',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-          gap: '5px'
-        }}>
-          {userSelect.length === 0 ? <span style={{color:'#ccc', fontSize:'1rem'}}>단어를 순서대로 누르세요</span> : 
-            userSelect.map((word, i) => (
-              <span key={i} style={{color:'var(--primary)'}}>{word}</span>
-            ))
-          }
+        {/* 정답 칸 */}
+        <div style={{minHeight:'60px', borderBottom:'2px solid #ddd', width:'100%', marginBottom:'20px', fontSize:'1.5rem', fontWeight:'bold', color:'var(--primary)'}}>
+          {userOrder.join(" ")}
         </div>
 
-        {/* 선택지 버튼들 */}
-        <div style={{display:'flex', gap:'10px', flexWrap:'wrap', justifyContent:'center', width:'95%'}}>
-          {quiz.parts.map((part, i) => (
-            <button key={i} onClick={() => handleSelect(part)} disabled={userSelect.includes(part)}
+        {/* 조각 버튼들 */}
+        <div style={{display:'flex', flexWrap:'wrap', gap:'10px', justifyContent:'center'}}>
+          {shuffledParts.map((part, i) => (
+            <button 
+              key={i} 
+              onClick={() => selectPart(part)}
               style={{
-                padding:'12px 20px', 
-                fontSize:'1.1rem', 
-                borderRadius:'25px',
-                background: userSelect.includes(part) ? '#f1f2f6' : 'white',
-                border: userSelect.includes(part) ? '2px solid #ddd' : '2px solid var(--primary)',
-                color: userSelect.includes(part) ? '#ccc' : '#2d3436',
-                boxShadow: userSelect.includes(part) ? 'none' : '0 4px 6px rgba(0,0,0,0.05)',
-                transition: 'all 0.2s'
-              }}>
+                background: userOrder.includes(part) ? '#ccc' : 'white',
+                color: userOrder.includes(part) ? '#fff' : '#333',
+                border: '2px solid #ddd', padding: '10px 15px', borderRadius: '10px', fontSize:'1.1rem'
+              }}
+            >
               {part}
             </button>
           ))}
         </div>
-
-        {/* ★ 조작 버튼 영역 (다시 놓기 / 제출하기) */}
-        <div style={{marginTop:'50px', display:'flex', gap:'15px', width:'90%'}}>
-          <button 
-            onClick={() => setUserSelect([])} 
-            style={{
-              flex: 1,
-              background:'#ff7675', 
-              color:'white', 
-              padding:'15px', 
-              borderRadius:'15px',
-              fontSize:'1rem',
-              fontWeight:'bold',
-              border:'none',
-              cursor:'pointer'
-            }}
-          >
-            다시 놓기 ↺
-          </button>
-
-          <button 
-            onClick={checkAnswer} 
-            disabled={userSelect.length === 0}
-            style={{
-              flex: 2, /* 제출 버튼을 더 크게 */
-              background: userSelect.length > 0 ? 'var(--primary)' : '#b2bec3', 
-              color:'white', 
-              padding:'15px', 
-              borderRadius:'15px',
-              fontSize:'1.1rem',
-              fontWeight:'bold',
-              border:'none',
-              boxShadow: userSelect.length > 0 ? '0 4px 10px rgba(108, 92, 231, 0.3)' : 'none',
-              cursor: userSelect.length > 0 ? 'pointer' : 'not-allowed'
-            }}
-          >
-            제출하기 ✅
-          </button>
-        </div>
-
+      </div>
+      
+      <div className="input-area">
+        <button onClick={checkAnswer} className="full-btn">제출하기</button>
       </div>
     </div>
   );

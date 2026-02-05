@@ -2,111 +2,86 @@
 import { useState, useEffect } from "react";
 
 export default function GameProverb({ onBack, pastProverbs = [] }) {
-  const [quizList, setQuizList] = useState([]);
-  const [current, setCurrent] = useState(0);
+  const [list, setList] = useState([]);
+  const [idx, setIdx] = useState(0);
   const [input, setInput] = useState("");
-  const [msg, setMsg] = useState("AI가 속담 책을 펴고 있습니다...");
   const [score, setScore] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const loadQuizzes = async () => {
-    setMsg("속담 5개를 가져오는 중...");
+  const loadBatch = async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: `한국 속담 퀴즈 5개 JSON 배열로.
-          
-          [필수 조건]
-          1. 속담을 정확히 반으로 쪼개야 함.
-          2. **'front'에는 속담의 앞부분만! 절대로 전체 속담을 넣지 마.**
-          3. 'back'에는 나머지 뒷부분만.
-          4. 이미 낸 문제(${JSON.stringify(pastProverbs)}) 제외.
-          
-          [잘못된 예]
-          front: "가는 말이 고와야 오는 말이 곱다" (X - 전체 다 줌)
-          
-          [올바른 예]
-          front: "가는 말이 고와야"
-          back: "오는 말이 곱다"
-          
-          응답: [{"front": "...", "back": "..."}]`
+          prompt: `한국어 속담 퀴즈 5개를 만들어. 
+          형식: 앞부분을 보여주면 뒷부분을 맞히기.
+          이미 낸 속담(${JSON.stringify(pastProverbs)}) 제외.
+          응답: [{ "question": "가는 말이 고와야", "answer": "오는 말이 곱다" }, ...]`
         })
       });
       const data = await res.json();
-      const text = data.text.replace(/```json/g, "").replace(/```/g, "").trim();
-      const json = JSON.parse(text.match(/\[.*\]/s)[0]);
-
-      // ★ 데이터 필터링 (혹시 모를 오류 방지)
-      const validQuizzes = json.filter(q => {
-         // 앞부분이 뒷부분을 포함하거나 너무 길면 제외
-         if (q.front.includes(q.back)) return false; 
-         if (q.front.length > 20) return false; 
-         return true;
-      });
-
-      setQuizList(prev => [...prev, ...validQuizzes]);
-      setMsg("");
+      const text = data.text.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(text);
+      setList(prev => [...prev, ...parsed]);
+      setLoading(false);
     } catch (e) {
-      // 에러 시 기본 문제
-      setQuizList(prev => [...prev, {front: "원숭이도 나무에서", back: "떨어진다"}]);
+      setList(prev => [...prev, { question: "가는 말이 고와야", answer: "오는 말이 곱다" }]);
+      setLoading(false);
     }
   };
 
-  useEffect(() => { loadQuizzes(); }, []);
+  useEffect(() => { loadBatch(); }, []);
 
-  // 무한 스크롤 로딩
-  useEffect(() => {
-    if (quizList.length > 0 && quizList.length - current < 2) {
-      loadQuizzes();
-    }
-  }, [current, quizList]);
-
-  const handleSubmit = (e) => {
+  const check = (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    
-    const q = quizList[current];
-    // 공백 제거 후 비교 (정답 인정 범위 넓힘)
-    const userAnswer = input.replace(/\s/g, "");
-    const correctAnswer = q.back.replace(/\s/g, "");
-    
-    if (correctAnswer.includes(userAnswer) && userAnswer.length >= 2) {
+    if (!list[idx]) return;
+
+    // 유연한 정답 체크 (공백 제거 후 비교)
+    const cleanInput = input.replace(/\s+/g, "");
+    const cleanAnswer = list[idx].answer.replace(/\s+/g, "");
+
+    if (cleanInput === cleanAnswer) {
+      alert("정답입니다! 👏");
       setScore(s => s + 20);
-      alert(`정답! ⭕\n"${q.front} ${q.back}"`);
-      nextQuiz();
+      setInput("");
+      
+      if (idx + 1 < list.length) {
+        setIdx(idx + 1);
+        if (list.length - (idx + 1) < 2) loadBatch();
+      } else {
+        alert("모든 문제를 풀었습니다!");
+        onBack(list, score + 20, false);
+      }
     } else {
-      alert(`땡! ❌\n정답: ${q.back}`);
-      // 틀리면 종료 (점수 전달)
-      onBack(quizList.slice(0, current + 1), score);
+      alert(`틀렸습니다! 정답: ${list[idx].answer}`);
+      // 틀려도 다음 문제로 넘어감 (선택사항)
+      if (idx + 1 < list.length) setIdx(idx + 1);
+      else onBack(list, score, false);
+      setInput("");
     }
   };
 
-  const nextQuiz = () => {
-    setInput("");
-    setCurrent(c => c + 1);
-  };
-
-  if (quizList.length === 0) return <div className="result-box"><h3>{msg}</h3></div>;
-  const q = quizList[current];
+  if (loading && list.length === 0) return <div className="result-box"><h3>속담을 불러오는 중...</h3></div>;
+  if (!list[idx]) return null;
 
   return (
     <div className="game-container">
       <div className="header">
-        <button onClick={() => onBack(quizList.slice(0, current), score)}>나가기</button> 
-        <span>{score}점</span>
+        <button onClick={() => onBack(list.slice(0, idx), score, true)}>나가기</button>
+        <span>문제 {idx + 1} | {score}점</span>
       </div>
+      
       <div className="quiz-card">
-        <h3>⚡ 속담 이어달리기 ({current + 1}번째)</h3>
-        
-        <h1 style={{color: '#6c5ce7', margin: '30px 0', fontSize:'2.2rem', wordBreak:'keep-all'}}>
-          {q?.front}
-        </h1>
-        <h2 style={{color: '#aaa'}}>( ... )</h2>
+        <h3>속담 이어달리기</h3>
+        <h1 style={{fontSize:'2.2rem', margin:'20px 0'}}>{list[idx].question}</h1>
+        <p>... 뒤에 이어질 말은?</p>
       </div>
-      <form onSubmit={handleSubmit} className="input-area">
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="뒷부분을 완성하세요" autoFocus />
-        <button type="submit">확인</button>
+      
+      <form onSubmit={check} className="input-area">
+        <input value={input} onChange={e=>setInput(e.target.value)} autoFocus placeholder="뒷부분을 입력하세요" />
+        <button type="submit">제출</button>
       </form>
     </div>
   );

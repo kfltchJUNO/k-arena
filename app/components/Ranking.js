@@ -3,21 +3,14 @@ import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 
-const GAME_NAMES = {
-  total: "👑 종합 점수 (최고 기록 합산)", // ★ 이름 변경
-  best_factory: "🏭 단어 공장",
-  best_speed: "🚀 스피드 퀴즈",
-  best_wordchain: "🧩 끝말잇기",
-  best_rain: "🌧️ 단어 비",
-  best_antonym: "🐸 반대말",
-  best_initial: "🤫 자음 퀴즈",
-  best_proverb: "⚡ 척하면 착!",
-  best_category: "🌊 주제 러쉬",
-  best_homonym: "🕵️ 연상 탐정",
-  best_synonym: "🔗 유의어 잇기",
-  best_collocation: "👫 짝꿍 단어",
-  best_sentence: "🧩 문장 조각",
-  best_twenty: "👶 스무고개 Jr"
+// 그룹별 합산할 필드 정의
+const RANKING_GROUPS = {
+  total: { name: "👑 종합 랭킹", fields: ["totalScore"] }, // totalScore는 이미 합산되어 있음
+  speed_zone: { name: "🕵️ 스피드왕", fields: ["best_speed", "best_twenty", "best_homonym"] },
+  pair_zone: { name: "🔗 짝꿍왕", fields: ["best_antonym", "best_synonym", "best_collocation"] },
+  initial_zone: { name: "🤫 초성왕", fields: ["best_initial", "best_factory"] },
+  arcade_zone: { name: "🕹️ 타자왕", fields: ["best_rain", "best_category"] },
+  wordchain: { name: "🧩 끝말잇기", fields: ["best_wordchain"] }
 };
 
 export default function Ranking({ onBack }) {
@@ -30,17 +23,27 @@ export default function Ranking({ onBack }) {
       setLoading(true);
       setRankers([]);
       try {
-        const field = activeTab === "total" ? "totalScore" : activeTab;
-        
-        const q = query(
-          collection(db, "k_arena_users"), 
-          orderBy(field, "desc"), 
-          limit(10)
-        );
+        // 모든 유저를 가져와서 클라이언트에서 합산 정렬 (NoSQL의 한계로 인해 데이터가 많지 않을 때 유효)
+        // 만약 유저가 수천 명이면 DB 설계를 바꿔야 하지만, 현재 규모에선 이 방식이 가장 유연함.
+        const q = query(collection(db, "k_arena_users"), limit(50)); // 상위 50명 정도만 fetch
         const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const validData = data.filter(u => (u[field] || 0) > 0);
-        setRankers(validData);
+        
+        const data = snapshot.docs.map(doc => {
+          const u = doc.data();
+          // 현재 탭의 그룹 점수 계산
+          let groupScore = 0;
+          if (activeTab === "total") {
+            groupScore = u.totalScore || 0;
+          } else {
+            const fields = RANKING_GROUPS[activeTab].fields;
+            groupScore = fields.reduce((sum, field) => sum + (u[field] || 0), 0);
+          }
+          return { id: doc.id, nickname: u.nickname, score: groupScore };
+        });
+
+        // 점수 내림차순 정렬
+        const sorted = data.filter(u => u.score > 0).sort((a, b) => b.score - a.score).slice(0, 10);
+        setRankers(sorted);
       } catch (error) {
         console.error("랭킹 로딩 실패:", error);
       } finally {
@@ -58,28 +61,28 @@ export default function Ranking({ onBack }) {
       </div>
 
       <div style={{
-        display:'flex', gap:'10px', padding:'10px', overflowX:'auto', 
+        display:'flex', gap:'5px', padding:'10px', overflowX:'auto', 
         borderBottom:'1px solid #ddd', background:'#f8f9fa', whiteSpace:'nowrap'
       }}>
-        {Object.entries(GAME_NAMES).map(([key, name]) => (
+        {Object.entries(RANKING_GROUPS).map(([key, info]) => (
           <button 
             key={key} 
             onClick={() => setActiveTab(key)}
             style={{
-              padding:'8px 15px', borderRadius:'20px', fontSize:'0.85rem',
+              padding:'8px 12px', borderRadius:'20px', fontSize:'0.8rem',
               background: activeTab === key ? '#4da6ff' : 'white',
               color: activeTab === key ? 'white' : '#555',
-              border: '1px solid #ddd', boxShadow:'0 2px 2px rgba(0,0,0,0.05)'
+              border: '1px solid #ddd'
             }}
           >
-            {name}
+            {info.name}
           </button>
         ))}
       </div>
       
       <div className="scroll-box" style={{background: 'white', flex:1, padding:0}}>
         {loading ? (
-          <div style={{padding:'40px', textAlign:'center', color:'#888'}}>랭킹을 불러오고 있습니다...</div>
+          <div style={{padding:'40px', textAlign:'center', color:'#888'}}>랭킹 계산 중...</div>
         ) : (
           <table style={{width: '100%', borderCollapse: 'collapse'}}>
             <thead>
@@ -97,15 +100,14 @@ export default function Ranking({ onBack }) {
                   </td>
                   <td style={{textAlign: 'left', fontWeight: 'bold'}}>
                     {user.nickname || '익명'}
-                    {activeTab === 'total' && <span style={{fontSize:'0.7rem', color:'#aaa', display:'block'}}>Lv.{Math.floor((user.totalScore||0)/1000) + 1}</span>}
                   </td>
                   <td style={{textAlign: 'right', paddingRight:'20px', color: '#4da6ff', fontWeight:'bold'}}>
-                    {user[activeTab === 'total' ? 'totalScore' : activeTab]?.toLocaleString() || 0}
+                    {user.score.toLocaleString()}
                   </td>
                 </tr>
               ))}
               {rankers.length === 0 && (
-                <tr><td colSpan="3" style={{padding:'40px', textAlign:'center', color:'#ccc'}}>아직 랭킹 기록이 없습니다.</td></tr>
+                <tr><td colSpan="3" style={{padding:'40px', textAlign:'center', color:'#ccc'}}>랭킹 기록이 없습니다.</td></tr>
               )}
             </tbody>
           </table>
