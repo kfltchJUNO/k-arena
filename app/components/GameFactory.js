@@ -1,121 +1,177 @@
 "use client";
 import { useState, useEffect } from "react";
 
-const CHO_LIST = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
-const TARGETS = ["ㅇㅅ", "ㄱㅈ", "ㅅㄱ", "ㅇㄱ", "ㅎㄱ", "ㅂㄷ", "ㅈㄱ", "ㄱㅅ", "ㅁㅈ", "ㅇㄹ", "ㅅㅁ", "ㅂㅅ"];
-
 export default function GameFactory({ onBack }) {
-  const [target, setTarget] = useState("");
+  const [targetInitials, setTargetInitials] = useState(["", ""]); // 두 개의 초성
   const [input, setInput] = useState("");
   const [words, setWords] = useState([]);
   const [timeLeft, setTimeLeft] = useState(60);
-  const [gameState, setGameState] = useState("playing");
+  const [gameState, setGameState] = useState("loading");
   const [score, setScore] = useState(0);
-  const [aiMsg, setAiMsg] = useState("");
+  const [feedback, setFeedback] = useState([]);
 
-  // 초성 추출
-  const getChosung = (str) => {
-    let result = "";
-    for (let i = 0; i < str.length; i++) {
-      const code = str.charCodeAt(i) - 44032;
-      if (code > -1 && code < 11172) result += CHO_LIST[Math.floor(code / 588)];
-      else result += str[i];
-    }
-    return result;
-  };
+  // 1. 초성 추출을 위한 표준 한글 자음 배열 (19개)
+  // 유니코드 계산 공식상 반드시 이 순서대로 19개가 있어야 인덱스가 정확히 맞습니다.
+  const ALL_CHO = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
 
+  // 2. 문제 출제용 쉬운 자음 배열 (복잡한 ㄲ, ㄸ, ㅃ, ㅉ 등은 제외하여 난이도 조절)
+  const QUIZ_CHO = ["ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
+
+  // 게임 시작 (초성 2개 랜덤 선택)
   useEffect(() => {
-    setTarget(TARGETS[Math.floor(Math.random() * TARGETS.length)]);
+    const first = QUIZ_CHO[Math.floor(Math.random() * QUIZ_CHO.length)];
+    const second = QUIZ_CHO[Math.floor(Math.random() * QUIZ_CHO.length)];
+    setTargetInitials([first, second]);
+    setGameState("playing");
+  }, []);
+
+  // 타이머
+  useEffect(() => {
+    if (gameState !== "playing") return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
-        if (prev <= 1) { clearInterval(timer); finishGame(); return 0; }
+        if (prev <= 1) {
+          clearInterval(timer);
+          finishGame();
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [gameState]);
+
+  // ★ 핵심 수정: 초성 추출 로직 (19개 자음 기준)
+  const getInitial = (char) => {
+    const code = char.charCodeAt(0) - 44032;
+    // 한글이 아니거나 자음만 있는 경우 등
+    if (code < 0 || code > 11171) return ""; 
+    const initialIndex = Math.floor(code / 588);
+    return ALL_CHO[initialIndex];
+  };
+
+  const handleInput = (e) => {
+    e.preventDefault();
+    const val = input.trim();
+    
+    // 1. 이미 입력한 단어 체크
+    if (!val || words.includes(val)) {
+      setInput("");
+      return;
+    }
+
+    // 2. 길이 체크 (초성이 2개이므로 반드시 2글자여야 함)
+    if (val.length !== 2) {
+      alert("2글자 단어를 입력해주세요!");
+      setInput("");
+      return;
+    }
+
+    // 3. 한글 완성형 체크
+    const isCompleteHangul = /^[가-힣]{2}$/.test(val);
+    if (!isCompleteHangul) {
+      alert("완성된 한글 2글자만 가능합니다.");
+      setInput("");
+      return;
+    }
+
+    // 4. 초성 일치 체크
+    const initial1 = getInitial(val.charAt(0));
+    const initial2 = getInitial(val.charAt(1));
+
+    if (initial1 !== targetInitials[0] || initial2 !== targetInitials[1]) {
+      alert(`제시된 초성 [${targetInitials[0]} ${targetInitials[1]}] (와)과 일치하지 않습니다.`);
+      setInput("");
+      return;
+    }
+
+    // 통과
+    setWords([...words, val]);
+    setInput("");
+  };
 
   const finishGame = async () => {
-    // 1. 게임 상태 변경
     setGameState("verifying");
-    setAiMsg("🤖 AI가 단어를 검증하고 있습니다...");
-    
-    let finalScore = 0; // 점수 임시 저장 변수
+
+    if (words.length === 0) {
+      setScore(0);
+      setFeedback([]);
+      setGameState("result");
+      return;
+    }
 
     try {
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: `다음 단어 목록을 확인하고, 표준국어대사전에 있는 유효한 명사만 골라내.
-          입력단어: ${JSON.stringify(words)}
+          prompt: `사용자가 초성 '${targetInitials[0]} ${targetInitials[1]}'(으)로 구성된 2글자 단어들을 입력했어.
+          국립국어원 표준국어대사전 기준으로 존재하는 명사인지 엄격하게 채점해줘.
           
-          응답형식(JSON): ["단어1", "단어2"]`
+          [입력된 단어 목록]: ${JSON.stringify(words)}
+          
+          다음 JSON 형식으로만 응답해:
+          {
+            "results": [
+              { "word": "가수", "isValid": true },
+              { "word": "갹수", "isValid": false }
+            ]
+          }
+          * isValid 기준: 표준국어대사전에 등재된 명사면 true, 아니면 false.`
         }),
       });
+
       const data = await res.json();
-      const text = data.text.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(data.text.replace(/```json|```/g, "").trim());
       
-      let validWords = [];
-      try {
-        validWords = JSON.parse(text.match(/\[.*\]/s)[0]);
-      } catch (e) {
-        // 파싱 실패 시 입력한 단어 모두 인정 (유저 보호)
-        validWords = words; 
-      }
+      const results = parsed.results;
+      const validCount = results.filter(r => r.isValid).length;
+      
+      setFeedback(results);
+      setScore(validCount * 10);
+      setGameState("result");
 
-      const correct = validWords.length;
-      // 점수 계산: 개당 10점 + (10개 단위 보너스)
-      finalScore = (correct * 10) + (Math.floor(correct / 10) * 10);
-      
-      setScore(finalScore); // 상태 업데이트
-      setAiMsg(`검증 완료! 유효 단어 ${correct}개 인정.`);
-      
-    } catch(e) {
-      console.error(e);
-      // API 에러 시 전부 정답 처리
-      finalScore = words.length * 10;
-      setScore(finalScore);
-      setAiMsg("AI 연결 불안정. 모든 단어를 점수로 인정합니다!");
+    } catch (error) {
+      console.error("채점 오류:", error);
+      setScore(words.length * 10);
+      setFeedback(words.map(w => ({ word: w, isValid: true })));
+      setGameState("result");
     }
-    
-    setGameState("result");
-  };
-
-  const handleInput = (e) => {
-    e.preventDefault();
-    if(!input.trim()) return;
-    
-    // 초성 검사
-    const cho = getChosung(input).substring(0,2);
-    if(cho !== target.replace(/ /g,'')) { alert(`초성이 [${target}]이어야 해요!`); setInput(""); return; }
-    
-    // 중복 검사
-    if(words.includes(input)) { alert("이미 쓴 단어예요!"); setInput(""); return; }
-    
-    setWords([...words, input]);
-    setInput("");
   };
 
   return (
     <div className="game-container">
-      {/* 나가기 버튼 클릭 시 현재 score 상태 전달 */}
       <div className="header">
-        <button onClick={() => onBack(null, score)}>나가기</button> 
-        <span>⏳ {timeLeft}s</span>
+        <button onClick={() => onBack([], score, true)}>나가기</button>
+        <span>⏳ {timeLeft}초</span>
       </div>
 
       {gameState === "playing" && (
         <>
-          <div className="quiz-card" style={{flex:'0 0 auto', padding:'10px'}}>
-            <h2 style={{fontSize:'3.5rem', margin:'10px 0', letterSpacing:'5px'}}>{target}</h2>
-            <p>초성에 맞는 단어를 많이 입력하세요!</p>
+          <div className="quiz-card" style={{padding:'30px'}}>
+            <h3 style={{color:'#636e72'}}>제시된 초성</h3>
+            <div style={{display:'flex', justifyContent:'center', gap:'10px', margin:'20px 0'}}>
+              <div style={initialBoxStyle}>{targetInitials[0]}</div>
+              <div style={initialBoxStyle}>{targetInitials[1]}</div>
+            </div>
+            <p style={{wordBreak: 'keep-all'}}>이 초성에 맞는 <b>2글자 단어</b>를 만드세요!</p>
           </div>
-          <div className="scroll-box">
-            {words.map((w, i) => <span key={i} className="tag">{w}</span>)}
+
+          <div className="scroll-box" style={{maxHeight:'200px'}}>
+            {words.map((w, i) => (
+              <span key={i} className="tag">{w}</span>
+            ))}
+            {words.length === 0 && <span style={{color:'#ccc'}}>단어를 입력하세요 (예: 가수)</span>}
           </div>
+
           <form onSubmit={handleInput} className="input-area">
-            <input value={input} onChange={e=>setInput(e.target.value)} placeholder="단어 입력" autoFocus />
+            <input 
+              value={input} 
+              onChange={(e) => setInput(e.target.value)} 
+              placeholder={`예: ${targetInitials[0]}ㅏ${targetInitials[1]}ㅡ`}
+              autoFocus 
+              maxLength={2}
+            />
             <button type="submit">입력</button>
           </form>
         </>
@@ -123,18 +179,56 @@ export default function GameFactory({ onBack }) {
 
       {gameState === "verifying" && (
         <div className="result-box">
-          <h3>{aiMsg}</h3>
+          <h2>🤖 AI가 채점 중...</h2>
+          <p>사전을 뒤적거리는 중입니다!</p>
         </div>
       )}
 
       {gameState === "result" && (
         <div className="result-box">
-          <h3>{aiMsg}</h3>
-          <h1>{score}점</h1>
-          {/* 여기서도 score를 정확히 전달 */}
-          <button onClick={() => onBack(null, score)} className="full-btn">로비로</button>
+          <h3>검증 완료!</h3>
+          <h1 style={{fontSize:'3rem', color:'var(--primary)'}}>{score}점</h1>
+          
+          <div style={{
+            display:'flex', flexWrap:'wrap', gap:'10px', justifyContent:'center', 
+            margin:'20px 0', maxHeight:'300px', overflowY:'auto'
+          }}>
+            {feedback.map((item, index) => (
+              <span 
+                key={index} 
+                style={{
+                  padding: '8px 15px',
+                  borderRadius: '20px',
+                  fontSize: '1.1rem',
+                  fontWeight: 'bold',
+                  background: item.isValid ? '#e1f5fe' : '#ffebee',
+                  color: item.isValid ? '#00b894' : '#ff7675',
+                  border: item.isValid ? '1px solid #00b894' : '1px solid #ff7675'
+                }}
+              >
+                {item.word} {item.isValid ? 'O' : 'X'}
+              </span>
+            ))}
+          </div>
+
+          <button onClick={() => onBack([], score, false)} className="full-btn">결과 저장하고 나가기</button>
         </div>
       )}
     </div>
   );
 }
+
+// 스타일 객체
+const initialBoxStyle = {
+  background: '#6c5ce7', 
+  color: 'white', 
+  width: '80px', 
+  height: '80px', 
+  borderRadius: '20px', 
+  display: 'flex', 
+  alignItems: 'center', 
+  justifyContent: 'center',
+  fontSize: '3rem', 
+  fontWeight: 'bold',
+  boxShadow: '0 4px 10px rgba(108, 92, 231, 0.3)'
+};

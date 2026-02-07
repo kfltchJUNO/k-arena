@@ -7,7 +7,7 @@ import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 const RANKING_GROUPS = {
   total: { name: "👑 종합 랭킹", fields: ["totalScore"] }, // totalScore는 이미 합산되어 있음
   speed_zone: { name: "🕵️ 스피드왕", fields: ["best_speed", "best_twenty", "best_homonym"] },
-  pair_zone: { name: "🔗 짝꿍왕", fields: ["best_antonym", "best_synonym", "best_collocation"] },
+  pair_zone: { name: "🔗 짝꿍왕", fields: ["best_idiom", "best_synonym", "best_collocation"] },
   initial_zone: { name: "🤫 초성왕", fields: ["best_initial", "best_factory"] },
   arcade_zone: { name: "🕹️ 타자왕", fields: ["best_rain", "best_category"] },
   wordchain: { name: "🧩 끝말잇기", fields: ["best_wordchain"] }
