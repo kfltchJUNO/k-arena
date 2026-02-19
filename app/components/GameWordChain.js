@@ -10,34 +10,60 @@ export default function GameWordChain({ onBack }) {
   const [score, setScore] = useState(0);
   const scrollRef = useRef(null);
 
+  // 스크롤 자동 내리기
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
-
     const userWord = input.trim();
+    if (!userWord || loading) return;
+
+    // 클라이언트 측 1차 방어: 한글만 입력되게 처리
+    if (!/^[가-힣]+$/.test(userWord)) {
+      alert("공백이나 기호 없이 한글 단어만 입력해주세요!");
+      return;
+    }
+
     const newMsgs = [...messages, { sender: "user", text: userWord }];
     setMessages(newMsgs);
     setInput("");
     setLoading(true);
 
     try {
-      const lastAiMsg = messages.filter(m => m.sender === 'ai').pop();
-      const lastAiWord = lastAiMsg ? lastAiMsg.text.split(" ").pop().replace(/[!.?]/g, "") : "";
+      // ★ 버그 수정 1: AI의 '진짜' 이전 단어 찾기 (첫 인삿말 제외 및 이모티콘 완벽 제거)
+      const aiMessages = messages.filter(m => m.sender === 'ai');
+      let lastAiWord = "";
       
+      if (aiMessages.length > 1) {
+        // 가장 마지막 AI 메시지에서 순수 '한글'만 추출 (이모티콘, 마침표 등 다 날림)
+        lastAiWord = aiMessages[aiMessages.length - 1].text.replace(/[^가-힣]/g, "");
+      }
+      
+      let prompt = "";
+      
+      // ★ 버그 수정 2: 첫 턴과 진행 중 턴 분리
+      if (!lastAiWord) {
+        // 첫 번째 턴 (유저가 첫 단어 제시)
+        prompt = `끝말잇기 게임의 첫 턴이야. 유저가 제시한 단어: "${userWord}".
+        1. 이 단어가 사전에 있는 유효한 명사인지 확인해.
+        2. 유효하지 않으면: { "valid": false, "reason": "명사가 아닙니다." }
+        3. 유효하면, 이 단어의 끝 글자로 시작하는 단어로 받아쳐: { "valid": true, "reply": "이어갈단어" }
+        [중요 조건] reply에는 절대 이모티콘이나 문장부호를 넣지 말고 오직 '순수 한글 단어'만 출력해. 한방 단어 금지. 오직 JSON 형식으로만 응답해.`;
+      } else {
+        // 두 번째 턴 이상 (정상적인 꼬리물기)
+        prompt = `끝말잇기 진행 중. AI의 이전 단어: "${lastAiWord}", 유저 입력: "${userWord}".
+        1. 유저의 단어가 사전에 있는 명사인지, 그리고 "${lastAiWord}"의 끝 글자(또는 두음법칙)로 시작하는지 엄격히 확인해.
+        2. 틀렸으면: { "valid": false, "reason": "틀린 이유 (예: 끝말이 안 이어짐, 명사가 아님)" }
+        3. 맞았으면: { "valid": true, "reply": "이어갈단어" }
+        [중요 조건] reply에는 절대 이모티콘이나 문장부호를 넣지 말고 오직 '순수 한글 단어'만 출력해. 한방 단어 금지. 오직 JSON 형식으로만 응답해.`;
+      }
+
       const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `끝말잇기 게임 중이야. 이전 단어: "${lastAiWord}", 유저 입력: "${userWord}".
-          1. 유저 단어가 유효한 명사인지, 끝말이 맞는지 확인해.
-          2. 틀렸으면: { "valid": false, "reason": "이유" }
-          3. 맞았으면: { "valid": true, "reply": "이어갈단어" }
-          한방 단어 금지. JSON 응답.`
-        })
+        body: JSON.stringify({ prompt })
       });
 
       const data = await res.json();
@@ -50,7 +76,8 @@ export default function GameWordChain({ onBack }) {
         setMessages(prev => [...prev, { sender: "ai", text: `땡! ${json.reason} 😅` }]);
       }
     } catch (error) {
-      setMessages(prev => [...prev, { sender: "ai", text: "오류가 났어. 다시 말해줘!" }]);
+      console.error(error);
+      setMessages(prev => [...prev, { sender: "ai", text: "앗, 시스템에 오류가 났어. 다시 입력해줄래?" }]);
     }
     setLoading(false);
   };
