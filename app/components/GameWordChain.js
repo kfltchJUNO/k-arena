@@ -1,126 +1,57 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
 
+// ── GAME 1: 끝말잇기 ─────────────────────────────────────────
 export default function GameWordChain({ onBack }) {
-  const [messages, setMessages] = useState([
-    { sender: "ai", text: "끝말잇기 시작! 먼저 단어를 입력해줘 😉" }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [score, setScore] = useState(0);
-  const scrollRef = useRef(null);
+  const sfx = useSFX();
+  const [msgs, setMsgs] = useState([{from:"ai",text:"끝말잇기 시작! 먼저 단어를 입력해줘 😉"}]);
+  const [input, setInput] = useState(""); const [loading, setLoading] = useState(false); const [score, setScore] = useState(0);
+  const scrollRef = useRef(null); const iref = useRef(null);
+  useEffect(() => { if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
+  useEffect(() => setTimeout(()=>iref.current?.focus(),80), []);
 
-  // 스크롤 자동 내리기
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
-
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    const userWord = input.trim();
-    if (!userWord || loading) return;
-
-    // 클라이언트 측 1차 방어: 한글만 입력되게 처리
-    if (!/^[가-힣]+$/.test(userWord)) {
-      alert("공백이나 기호 없이 한글 단어만 입력해주세요!");
-      return;
-    }
-
-    const newMsgs = [...messages, { sender: "user", text: userWord }];
-    setMessages(newMsgs);
-    setInput("");
-    setLoading(true);
-
+  const send = async () => {
+    const word = input.trim(); if(!word||loading||!/^[가-힣]+$/.test(word)) return;
+    setMsgs(p=>[...p,{from:"user",text:word}]); setInput(""); setLoading(true); sfx.type();
     try {
-      // ★ 버그 수정 1: AI의 '진짜' 이전 단어 찾기 (첫 인삿말 제외 및 이모티콘 완벽 제거)
-      const aiMessages = messages.filter(m => m.sender === 'ai');
-      let lastAiWord = "";
-      
-      if (aiMessages.length > 1) {
-        // 가장 마지막 AI 메시지에서 순수 '한글'만 추출 (이모티콘, 마침표 등 다 날림)
-        lastAiWord = aiMessages[aiMessages.length - 1].text.replace(/[^가-힣]/g, "");
-      }
-      
-      let prompt = "";
-      
-      // ★ 버그 수정 2: 첫 턴과 진행 중 턴 분리
-      if (!lastAiWord) {
-        // 첫 번째 턴 (유저가 첫 단어 제시)
-        prompt = `끝말잇기 게임의 첫 턴이야. 유저가 제시한 단어: "${userWord}".
-        1. 이 단어가 사전에 있는 유효한 명사인지 확인해.
-        2. 유효하지 않으면: { "valid": false, "reason": "명사가 아닙니다." }
-        3. 유효하면, 이 단어의 끝 글자로 시작하는 단어로 받아쳐: { "valid": true, "reply": "이어갈단어" }
-        [중요 조건] reply에는 절대 이모티콘이나 문장부호를 넣지 말고 오직 '순수 한글 단어'만 출력해. 한방 단어 금지. 오직 JSON 형식으로만 응답해.`;
-      } else {
-        // 두 번째 턴 이상 (정상적인 꼬리물기)
-        prompt = `끝말잇기 진행 중. AI의 이전 단어: "${lastAiWord}", 유저 입력: "${userWord}".
-        1. 유저의 단어가 사전에 있는 명사인지, 그리고 "${lastAiWord}"의 끝 글자(또는 두음법칙)로 시작하는지 엄격히 확인해.
-        2. 틀렸으면: { "valid": false, "reason": "틀린 이유 (예: 끝말이 안 이어짐, 명사가 아님)" }
-        3. 맞았으면: { "valid": true, "reply": "이어갈단어" }
-        [중요 조건] reply에는 절대 이모티콘이나 문장부호를 넣지 말고 오직 '순수 한글 단어'만 출력해. 한방 단어 금지. 오직 JSON 형식으로만 응답해.`;
-      }
-
-      const res = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt })
-      });
-
-      const data = await res.json();
-      const json = JSON.parse(data.text.replace(/```json|```/g, "").trim());
-
-      if (json.valid) {
-        setMessages(prev => [...prev, { sender: "ai", text: json.reply }]);
-        setScore(s => s + 10);
-      } else {
-        setMessages(prev => [...prev, { sender: "ai", text: `땡! ${json.reason} 😅` }]);
-      }
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { sender: "ai", text: "앗, 시스템에 오류가 났어. 다시 입력해줄래?" }]);
-    }
-    setLoading(false);
+      const aiMsgs = msgs.filter(m=>m.from==="ai");
+      const lastAi = aiMsgs.length>1 ? aiMsgs[aiMsgs.length-1].text.replace(/[^가-힣]/g,"") : "";
+      const prompt = !lastAi
+        ? `끝말잇기 첫 턴. 유저 단어:"${word}". 유효한 명사면 끝 글자로 시작하는 단어로 받아쳐. JSON만: {"valid":true,"reply":"단어"} 또는 {"valid":false,"reason":"이유"}. reply는 순수 한글만, 한방단어 금지.`
+        : `끝말잇기 진행. AI이전단어:"${lastAi}", 유저입력:"${word}". 명사이고 끝말 이어지면 valid:true. JSON만: {"valid":true,"reply":"단어"} 또는 {"valid":false,"reason":"이유"}. reply는 순수 한글만.`;
+      const res = await fetch("/api/gemini",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt})});
+      const d = await res.json();
+      const json = JSON.parse(d.text.replace(/```json|```/g,"").trim());
+      if(json.valid){ setMsgs(p=>[...p,{from:"ai",text:json.reply}]); setScore(s=>s+10); sfx.correct(); }
+      else { setMsgs(p=>[...p,{from:"ai",text:`땡! ${json.reason} 😅`}]); sfx.wrong(); }
+    } catch(e) { setMsgs(p=>[...p,{from:"ai",text:"오류가 났어요. 다시 해줘!"}]); }
+    setLoading(false); setTimeout(()=>iref.current?.focus(),40);
   };
 
   return (
-    <div className="game-container" style={{background: '#b2c7d9'}}>
-      <div className="header" style={{background: '#b2c7d9', borderBottom:'1px solid rgba(0,0,0,0.1)', color:'#333'}}>
-        <button onClick={() => onBack([], score, true)} style={{background:'none', color:'#333', border:'1px solid #666'}}>나가기</button>
-        <span>점수: {score}</span>
+    <Wrap>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 17px",flexShrink:0}}>
+        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <div style={{color:"#e2e8f0",fontWeight:900,fontSize:"0.95rem"}}>🧩 끝말잇기</div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end"}}><span style={{color:"#475569",fontSize:"0.6rem"}}>SCORE</span><span style={{color:"#fff",fontWeight:900}}>{score}</span></div>
       </div>
-
-      <div className="chat-box" ref={scrollRef} style={{
-        flex: 1, overflowY: 'auto', padding: '15px', display: 'flex', flexDirection: 'column', gap: '10px'
-      }}>
-        {messages.map((msg, i) => (
-          <div key={i} style={{
-            display: 'flex', 
-            justifyContent: msg.sender === 'user' ? 'flex-end' : 'flex-start',
-            alignItems: 'flex-end'
-          }}>
-            {msg.sender === 'ai' && <div style={{fontSize:'1.5rem', marginRight:'5px'}}>🤖</div>}
-            <div style={{
-              maxWidth: '75%', padding: '10px 14px',
-              borderRadius: msg.sender === 'user' ? '15px 0px 15px 15px' : '0px 15px 15px 15px',
-              background: msg.sender === 'user' ? '#ffeaa7' : '#ffffff',
-              color: '#2d3436', boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-              fontSize: '1rem', wordBreak: 'break-all'
-            }}>
-              {msg.text}
+      <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:9}}>
+        {msgs.map((m,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:m.from==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:7,animation:"fadein .25s ease-out"}}>
+            {m.from==="ai"&&<div style={{fontSize:"1.3rem",flexShrink:0}}>🤖</div>}
+            <div style={{maxWidth:"72%",padding:"10px 14px",borderRadius:m.from==="user"?"15px 4px 15px 15px":"4px 15px 15px 15px",background:m.from==="user"?"linear-gradient(135deg,#6366f1,#8b5cf6)":"rgba(255,255,255,0.07)",color:"#e2e8f0",fontSize:"0.95rem",wordBreak:"break-all",border:m.from==="user"?"none":"1px solid rgba(255,255,255,0.1)"}}>
+              {m.text}
             </div>
           </div>
         ))}
-        {loading && <div style={{textAlign:'left', color:'#555', fontSize:'0.8rem', marginLeft:'35px'}}>입력 중...</div>}
+        {loading&&<div style={{color:"#475569",fontSize:"0.78rem",marginLeft:38,animation:"pulse 1s infinite"}}>AI 생각 중...</div>}
       </div>
-
-      <form onSubmit={sendMessage} className="input-area" style={{background:'#fff', padding:'10px'}}>
-        <input 
-          value={input} onChange={(e) => setInput(e.target.value)} 
-          placeholder="단어를 입력하세요" autoFocus 
-          style={{background:'#f1f2f6', border:'none', borderRadius:'20px', padding:'10px 15px'}}
-        />
-        <button type="submit" disabled={loading} style={{borderRadius:'50%', width:'50px', height:'50px', padding:0, background:'#ffeaa7', color:'#333'}}>➤</button>
-      </form>
-    </div>
+      <div style={{padding:"11px 16px",display:"flex",gap:10,borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
+        <TInput value={input} onChange={e=>setInput(e.target.value)} onEnter={send} placeholder="한글 단어 입력"/>
+        <SBtn onClick={send} disabled={loading}>{loading?"⏳":"→"}</SBtn>
+      </div>
+      <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();send();}}} onChange={e=>setInput(e.target.value)} value={input}/>
+    </Wrap>
   );
 }

@@ -1,159 +1,67 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
 
-export default function GameTwenty({ onBack, pastWords = [] }) {
-  const [list, setList] = useState([]);
-  const [idx, setIdx] = useState(0); // 현재 문제 인덱스
-  const [hintsToShow, setHintsToShow] = useState([]);
-  const [input, setInput] = useState("");
-  const [hintStep, setHintStep] = useState(0); // 0~3 (힌트 1개~4개)
-  const [totalScore, setTotalScore] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [roundCount, setRoundCount] = useState(1); // 현재 라운드
-  const [gameOver, setGameOver] = useState(false);
+// ── GAME 3: 스무고개 ─────────────────────────────────────────
+const TW_FB = [
+  {word:"휴대폰",hints:["전자기기예요","매일 들고 다녀요","통화를 해요","손 안에 쏙"]},
+  {word:"자전거",hints:["두 바퀴예요","페달을 밟아요","친환경 이동수단","Tour de France"]},
+  {word:"도서관",hints:["조용한 곳","책이 엄청 많아요","무료로 이용해요","반납 기한이 있어요"]},
+  {word:"냉장고",hints:["주방에 있어요","차갑게 해줘요","음식을 보관해요","문을 열면 시원해요"]},
+  {word:"우산",hints:["비올 때 써요","접었다 폈다","위에서 아래로 퍼져요","손잡이가 있어요"]},
+];
+export default function GameTwenty({ onBack }) {
+  const sfx = useSFX();
+  const [list] = useState([...TW_FB].sort(()=>Math.random()-.5));
+  const [idx, setIdx] = useState(0); const [hStep, setHStep] = useState(0);
+  const [input, setInput] = useState(""); const [score, setScore] = useState(0);
+  const [phase, setPhase] = useState("playing"); const [glow, setGlow] = useState(null);
+  const [shake, setShake] = useState(false); const [pt, setPt] = useState(0);
+  const [history, setHistory] = useState([]);
+  const iref = useRef(null);
+  useEffect(()=>setTimeout(()=>iref.current?.focus(),80),[]);
+  useEffect(()=>{ if(phase==="playing") setHStep(0); },[idx,phase]);
 
-  // 문제 로딩
-  const loadBatch = async (isHardMode = false) => {
-    setLoading(true);
-    try {
-      const difficulty = isHardMode ? "고급(TOPIK 5~6급) 추상명사나 전문용어" : "초중급(TOPIK 1~4급) 일상 단어";
-      
-      const res = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `스무고개 퀴즈 5개를 JSON 배열로 만들어.
-          
-          [조건]
-          1. 난이도: ${difficulty}
-          2. 카테고리: 직업, 사물, 감정, 장소, 자연, 개념 등 다양하게.
-          3. **중복 금지:** 아래 단어들은 절대 사용 금지: ${JSON.stringify(pastWords.concat(list.map(i=>i.word)))}
-          
-          [힌트 규칙]
-          - 힌트는 총 4개.
-          - 힌트 1: 아주 알쏭달쏭하게 (범위가 넓음)
-          - 힌트 2: 조금 구체적
-          - 힌트 3: 결정적 특징
-          - 힌트 4: 거의 정답에 가까움
-          
-          응답: [{"word": "정답", "hints": ["힌트1", "힌트2", "힌트3", "힌트4"]}, ...]`
-        })
-      });
-      const data = await res.json();
-      const text = data.text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(text.match(/\[.*\]/s)[0]);
-      
-      setList(prev => [...prev, ...parsed]);
-      setLoading(false);
-    } catch (e) {
-      setList(prev => [...prev, { word: "휴대폰", hints: ["전자기기예요", "사람들이 매일 써요", "통화를 할 수 있어요", "손에 들고 다녀요"] }]);
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadBatch(false); }, []);
-
-  // 문제가 바뀌면 초기화
-  useEffect(() => {
-    if (list.length > 0 && list[idx]) {
-      setHintsToShow([list[idx].hints[0]]);
-      setHintStep(0);
-    }
-  }, [idx, list]);
-
-  const check = (e) => {
-    e.preventDefault();
-    if (gameOver || !list[idx]) return;
-    
-    const currentQuiz = list[idx];
-    if (input.trim() === currentQuiz.word) {
-      // 정답 맞힘! (힌트를 적게 쓸수록 고득점)
-      // 힌트 1개(step0): 100점 / 2개: 80점 / 3개: 60점 / 4개: 40점
-      const gainedScore = 100 - (hintStep * 20);
-      setTotalScore(s => s + gainedScore);
-      alert(`정답! ⭕ (+${gainedScore}점)`);
-      
-      nextRound();
+  const submit = () => {
+    const val=input.trim(); if(!val) return;
+    if(val===list[idx].word){
+      const pts=100-hStep*20; setScore(s=>s+pts); setPt(p=>p+1); setGlow("correct"); setHistory(h=>[...h,{word:list[idx].word,ok:true,pts,reason:`힌트 ${hStep+1}개 사용`}]); sfx.correct();
+      setTimeout(()=>{ if(idx+1>=list.length){setPhase("end");sfx.done();} else{setIdx(i=>i+1);setGlow(null);setInput("");setTimeout(()=>iref.current?.focus(),50);} },550);
     } else {
-      // 틀림
-      if (hintStep + 1 < currentQuiz.hints.length) {
-        // 다음 힌트 공개
-        setHintStep(prev => prev + 1);
-        setHintsToShow(prev => [...prev, currentQuiz.hints[hintStep + 1]]);
-        setInput("");
-        alert("틀렸습니다! 다음 힌트를 보세요.");
-      } else {
-        // 모든 힌트를 다 썼는데도 틀림 -> 게임 종료
-        setGameOver(true);
-      }
+      if(hStep<list[idx].hints.length-1){ setHStep(h=>h+1); sfx.reveal(); setInput(""); setTimeout(()=>iref.current?.focus(),40); }
+      else { setHistory(h=>[...h,{word:list[idx].word,ok:false,pts:0,reason:'힌트 4개 모두 사용'}]); setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(()=>{setShake(false);setGlow(null);setInput("");setTimeout(()=>iref.current?.focus(),40);},440); }
     }
   };
 
-  const nextRound = () => {
-    setInput("");
-    setRoundCount(r => r + 1);
-
-    // 10문제마다 난이도 상승 체크
-    const nextIdx = idx + 1;
-    const isHard = (roundCount + 1) > 10;
-
-    if (nextIdx < list.length) {
-      setIdx(nextIdx);
-      // 미리 로딩
-      if (list.length - nextIdx < 2) loadBatch(isHard);
-    } else { 
-      alert("다음 단계로 넘어갑니다! (난이도 상승 🔥)"); 
-      loadBatch(isHard); 
-      setIdx(nextIdx); 
-    }
-  };
-
-  // 게임 종료 화면
-  if (gameOver) {
-    return (
-      <div className="result-box">
-        <h1 style={{color:'#d63031'}}>GAME OVER</h1>
-        <h3>정답은 [{list[idx].word}] 였습니다.</h3>
-        <h2>최종 점수: {totalScore}점</h2>
-        <div style={{marginTop:'30px'}}>
-           <button onClick={() => onBack(list.slice(0, idx), totalScore)} className="full-btn">점수 저장하고 나가기</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (list.length === 0 || !list[idx]) return <div className="result-box"><h3>문제를 만드는 중...</h3></div>;
-
+  if(phase==="end") return <Rslt score={score} maxScore={list.length*100} onRetry={()=>{setIdx(0);setScore(0);setHStep(0);setInput("");setGlow(null);setHistory([]);setPhase("playing");setTimeout(()=>iref.current?.focus(),80);}} onBack={onBack} extra={[["정답",history.filter(h=>h.ok).length+"/"+list.length]]} detail={history}/>;
+  const q=list[idx];
   return (
-    <div className="game-container">
-      <div className="header">
-        {/* 나가기 버튼: 3번째 인자 true -> 저장 안 함 */}
-        <button onClick={() => onBack([], 0, true)}>나가기 (저장X)</button> 
-        <span>라운드 {roundCount} | {totalScore}점</span>
+    <Wrap>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 17px",flexShrink:0}}>
+        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <div style={{color:"#e2e8f0",fontWeight:900,fontSize:"0.92rem"}}>👶 스무고개</div>
+        <div style={{color:"#fff",fontWeight:900}}>{score}</div>
       </div>
-      
-      <div className="quiz-card" style={{justifyContent:'flex-start', paddingTop:'20px'}}>
-        <h3>👶 스무고개 Jr</h3>
-        <p style={{fontSize:'0.9rem', color:'#888'}}>힌트를 적게 볼수록 점수가 높아요!</p>
-        
-        <div style={{width:'90%', margin:'10px auto', textAlign:'left'}}>
-          {hintsToShow.map((h, i) => (
-            <div key={i} style={{
-              padding:'15px', background: i === hintsToShow.length -1 ? '#fff0f6' : '#f1f2f6', 
-              margin:'8px 0', borderRadius:'15px', fontSize:'1.1rem',
-              border: i === hintsToShow.length -1 ? '2px solid #ff7675' : '2px solid transparent',
-              animation: 'slideUp 0.3s ease-out'
-            }}>
-              💡 힌트 {i+1}: <b>{h}</b>
-            </div>
-          ))}
+      <Mid>
+        <Ptcl trigger={pt} color="#f59e0b"/>
+        <div style={{color:"#334155",fontSize:"0.68rem",letterSpacing:".13em",marginBottom:12}}>힌트 적게 볼수록 고득점! (최대 {100-hStep*20}점)</div>
+        <Card glow={glow} shake={shake}>
+          <div style={{display:"flex",flexDirection:"column",gap:7}}>
+            {q.hints.slice(0,hStep+1).map((h,i)=>(
+              <div key={i} style={{background:"rgba(255,255,255,0.05)",borderRadius:8,padding:"9px 13px",fontSize:"0.82rem",color:"#cbd5e1",borderLeft:`2px solid ${["#6366f1","#a78bfa","#f59e0b","#ef4444"][i]}`,animation:"slidein .3s ease-out"}}>
+                💡 힌트 {i+1}: {h}
+              </div>
+            ))}
+          </div>
+          {hStep<q.hints.length-1&&<div style={{textAlign:"center",color:"#334155",fontSize:"0.7rem",marginTop:8}}>틀리면 다음 힌트가 공개돼요</div>}
+          {glow==="correct"&&<div style={{color:"#22c55e",textAlign:"center",fontWeight:700,marginTop:8}}>✓ {q.word}!</div>}
+        </Card>
+        <div style={{display:"flex",gap:10,width:"100%",maxWidth:400,marginTop:14}}>
+          <TInput value={input} onChange={e=>{setInput(e.target.value);sfx.type();}} onEnter={submit} placeholder="정답을 입력하세요" glow={glow}/>
+          <SBtn onClick={submit} color="#f59e0b">→</SBtn>
         </div>
-      </div>
-      
-      <form onSubmit={check} className="input-area">
-        <input value={input} onChange={e=>setInput(e.target.value)} autoFocus placeholder="정답은?" />
-        <button type="submit">제출</button>
-      </form>
-    </div>
+        <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submit();}}} onChange={e=>setInput(e.target.value)} value={input}/>
+      </Mid>
+    </Wrap>
   );
 }

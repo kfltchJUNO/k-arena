@@ -1,118 +1,49 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
 
-export default function GameSentence({ onBack, pastSentences = [] }) {
-  const [list, setList] = useState([]);
-  const [idx, setIdx] = useState(0);
-  const [shuffledParts, setShuffledParts] = useState([]);
-  const [userOrder, setUserOrder] = useState([]);
-  const [score, setScore] = useState(0);
-  const [loading, setLoading] = useState(true);
+// ── GAME 5: 문장 조각 ─────────────────────────────────────────
+const SND = [
+  { s: "나는 학교에 간다", p: ["나는", "학교에", "간다"] },
+  { s: "오늘 날씨가 매우 좋아요", p: ["오늘", "날씨가", "매우", "좋아요"] },
+  { s: "저는 한국어를 배워요", p: ["저는", "한국어를", "배워요"] },
+  { s: "친구와 함께 밥을 먹었어요", p: ["친구와", "함께", "밥을", "먹었어요"] },
+  { s: "도서관에서 책을 읽고 있어요", p: ["도서관에서", "책을", "읽고", "있어요"] },
+];
+export default function GameSentence({ onBack }) {
+  const sfx = useSFX();
+  const [list] = useState(() => [...SND].sort(() => Math.random() - .5));
+  const [idx, setIdx] = useState(0); const [score, setScore] = useState(0);
+  const [order, setOrder] = useState([]); const [rem, setRem] = useState([]);
+  const [phase, setPhase] = useState("playing"); const [glow, setGlow] = useState(null); const [pt, setPt] = useState(0);
 
-  const loadBatch = async () => {
-    setLoading(true);
-    // 난이도 조절: 5문제 이상 풀면 더 긴 문장 출제
-    const difficulty = idx > 4 ? "중급 수준의 5~7어절 문장" : "초급 수준의 3~4어절 문장";
-    
-    try {
-      const res = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `한국어 문장 퍼즐 5개를 만들어줘.
-          조건: ${difficulty}. 점점 어렵게. 이미 낸 문장(${JSON.stringify(pastSentences)}) 제외.
-          응답: [{ "sentence": "나는 학교에 간다", "parts": ["학교에", "간다", "나는"] }, ...]`
-        })
-      });
-      const data = await res.json();
-      const text = data.text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(text);
-      setList(prev => [...prev, ...parsed]);
-      setLoading(false);
-    } catch (e) {
-      setList(prev => [...prev, { sentence: "날씨가 매우 좋습니다", parts: ["매우", "좋습니다", "날씨가"] }]);
-      setLoading(false);
-    }
+  const initQ = useCallback(i => { setRem([...list[i].p].sort(() => Math.random() - .5)); setOrder([]); setGlow(null); }, [list]);
+  useEffect(() => { if (phase === "playing") initQ(idx); }, [idx, phase]);
+
+  const add = (w, ri) => { sfx.select(); setOrder(o => [...o, w]); setRem(r => r.filter((_, i) => i !== ri)); };
+  const remove = (w, oi) => { sfx.desel(); setOrder(o => o.filter((_, i) => i !== oi)); setRem(r => [...r, w]); };
+  const check = () => {
+    if (order.join("").replace(/\s/g, "") === list[idx].s.replace(/\s/g, "")) {
+      setScore(s => s + 20); setPt(p => p + 1); setGlow("correct"); sfx.correct();
+      setTimeout(() => { if (idx + 1 >= list.length) { setPhase("end"); sfx.done(); } else setIdx(i => i + 1); }, 550);
+    } else { setGlow("wrong"); sfx.wrong(); setTimeout(() => initQ(idx), 480); }
   };
 
-  useEffect(() => { loadBatch(); }, []);
-
-  useEffect(() => {
-    if (list.length > 0 && list[idx]) {
-      setShuffledParts([...list[idx].parts].sort(() => Math.random() - 0.5));
-      setUserOrder([]);
-    }
-  }, [idx, list]);
-
-  const selectPart = (part) => {
-    if (userOrder.includes(part)) {
-      setUserOrder(userOrder.filter(p => p !== part));
-    } else {
-      setUserOrder([...userOrder, part]);
-    }
-  };
-
-  const checkAnswer = () => {
-    const current = list[idx];
-    const userAnswer = userOrder.join(" ");
-    
-    // 공백 제거 후 비교 (유연성)
-    if (userAnswer.replace(/\s/g, "") === current.sentence.replace(/\s/g, "")) {
-      alert("정답입니다! ⭕");
-      setScore(s => s + 20);
-      
-      if (idx + 1 < list.length) {
-        setIdx(idx + 1);
-        if (list.length - (idx + 1) < 2) loadBatch();
-      } else {
-        alert("모든 문제를 풀었습니다!");
-        onBack(list, score + 20, false);
-      }
-    } else {
-      alert("틀렸습니다! 다시 해보세요.");
-      setUserOrder([]);
-    }
-  };
-
-  if (loading && list.length === 0) return <div className="result-box"><h3>문장 로딩 중...</h3></div>;
-  if (!list[idx]) return null;
-
+  if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setGlow(null); setPhase("playing"); sfx.start(); }} onBack={onBack} />;
   return (
-    <div className="game-container">
-      <div className="header">
-        <button onClick={() => onBack(list.slice(0, idx), score, true)}>나가기</button>
-        <span>문제 {idx + 1} | {score}점</span>
-      </div>
-
-      <div className="quiz-card" style={{justifyContent:'flex-start', paddingTop:'40px'}}>
-        <h3 style={{marginBottom:'20px'}}>문장을 완성하세요</h3>
-        
-        {/* 정답 칸 */}
-        <div style={{minHeight:'60px', borderBottom:'2px solid #ddd', width:'100%', marginBottom:'20px', fontSize:'1.5rem', fontWeight:'bold', color:'var(--primary)'}}>
-          {userOrder.join(" ")}
+    <Wrap>
+      <Hdr onBack={onBack} score={score} prog={idx} total={list.length} />
+      <Mid>
+        <Ptcl trigger={pt} color="#10b981" />
+        <div style={{ width: "100%", maxWidth: 400, minHeight: 56, border: `2px dashed ${glow === "correct" ? "#22c55e" : glow === "wrong" ? "#ef4444" : "rgba(255,255,255,0.12)"}`, borderRadius: 15, padding: "12px", display: "flex", flexWrap: "wrap", gap: 7, alignItems: "center", marginBottom: 14, transition: "border-color .25s", animation: glow === "wrong" ? "shake .35s ease-out" : undefined }}>
+          {order.length === 0 && <span style={{ color: "#334155", fontSize: "0.78rem" }}>여기에 조각을 배열하세요</span>}
+          {order.map((w, i) => <button key={i + w} onClick={() => remove(w, i)} style={{ background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 8, color: "#a78bfa", fontWeight: 700, padding: "6px 12px", cursor: "pointer", fontFamily: "inherit", fontSize: "0.88rem", animation: "popin .2s ease-out" }}>{w}</button>)}
         </div>
-
-        {/* 조각 버튼들 */}
-        <div style={{display:'flex', flexWrap:'wrap', gap:'10px', justifyContent:'center'}}>
-          {shuffledParts.map((part, i) => (
-            <button 
-              key={i} 
-              onClick={() => selectPart(part)}
-              style={{
-                background: userOrder.includes(part) ? '#ccc' : 'white',
-                color: userOrder.includes(part) ? '#fff' : '#333',
-                border: '2px solid #ddd', padding: '10px 15px', borderRadius: '10px', fontSize:'1.1rem'
-              }}
-            >
-              {part}
-            </button>
-          ))}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 9, justifyContent: "center", maxWidth: 400, marginBottom: 18 }}>
+          {rem.map((w, i) => <button key={i + w} onClick={() => add(w, i)} style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, color: "#e2e8f0", fontWeight: 600, padding: "9px 15px", cursor: "pointer", fontFamily: "inherit", fontSize: "0.9rem" }}>{w}</button>)}
         </div>
-      </div>
-      
-      <div className="input-area">
-        <button onClick={checkAnswer} className="full-btn">제출하기</button>
-      </div>
-    </div>
+        <button onClick={check} disabled={order.length < list[idx].p.length} style={{ padding: "12px 28px", borderRadius: 12, background: order.length < list[idx].p.length ? "#1e293b" : "linear-gradient(135deg,#10b981,#059669)", border: "none", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: order.length < list[idx].p.length ? .5 : 1 }}>확인하기</button>
+      </Mid>
+    </Wrap>
   );
 }

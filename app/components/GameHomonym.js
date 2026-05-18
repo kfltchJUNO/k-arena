@@ -1,102 +1,64 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
 
-export default function GameHomonym({ onBack, pastWords = [] }) {
-  const [quizList, setQuizList] = useState([]);
-  const [current, setCurrent] = useState(0);
-  const [input, setInput] = useState("");
-  const [score, setScore] = useState(0);
-  const [loading, setLoading] = useState(true);
+// ── GAME 4: 연상 탐정 ────────────────────────────────────────
+const DET_FB = [
+  {word:"김치",hints:["한국","빨간색","배추"]},
+  {word:"바나나",hints:["노란색","달콤해요","원숭이"]},
+  {word:"이순신",hints:["조선시대","거북선","장군"]},
+  {word:"피자",hints:["이탈리아","치즈","둥근 모양"]},
+  {word:"기타",hints:["현악기","6줄","록 음악"]},
+];
+function GameDetective({ onBack }) {
+  const sfx = useSFX();
+  const [list] = useState([...DET_FB].sort(()=>Math.random()-.5));
+  const [idx, setIdx] = useState(0); const [score, setScore] = useState(0);
+  const [input, setInput] = useState(""); const [phase, setPhase] = useState("playing");
+  const [glow, setGlow] = useState(null); const [shake, setShake] = useState(false); const [pt, setPt] = useState(0);
+  const [history, setHistory] = useState([]);
+  const iref = useRef(null);
+  useEffect(()=>setTimeout(()=>iref.current?.focus(),80),[]);
 
-  // ★ 5문제 배치 로딩 (연상 퀴즈로 변경)
-  const loadBatch = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `한국어 '연상 퀴즈' 5개를 JSON 배열로 줘.
-          
-          [게임 방식]
-          어떤 단어를 설명하는 결정적인 힌트 3개를 줘.
-          
-          [조건]
-          1. 정답은 초등~중학생 수준의 명사.
-          2. 이미 낸 단어(${JSON.stringify(pastWords)}) 제외.
-          3. 힌트는 점점 구체적으로.
-          
-          [예시]
-          정답: "바나나" -> hints: ["길어요", "노란색", "원숭이"]
-          정답: "이순신" -> hints: ["조선시대", "거북선", "장군"]
-          
-          응답: [{"word": "정답", "hints": ["힌트1", "힌트2", "힌트3"]}, ...]`
-        })
-      });
-      const data = await res.json();
-      const text = data.text.replace(/```json/g, "").replace(/```/g, "").trim();
-      const newQuizzes = JSON.parse(text.match(/\[.*\]/s)[0]);
-      
-      setQuizList(prev => [...prev, ...newQuizzes]);
-      setLoading(false);
-    } catch (e) {
-      setQuizList(prev => [...prev, {word: "김치", hints: ["한국", "빨간색", "배추"]}]);
-      setLoading(false);
-    }
+  const submit = () => {
+    const val=input.trim(); if(!val||!list[idx]) return;
+    if(val===list[idx].word){
+      setScore(s=>s+30); setPt(p=>p+1); setGlow("correct"); setHistory(h=>[...h,{word:list[idx].word,ok:true,pts:30}]); sfx.correct();
+      setTimeout(()=>{ if(idx+1>=list.length){setPhase("end");sfx.done();} else{setIdx(i=>i+1);setGlow(null);setInput("");setTimeout(()=>iref.current?.focus(),50);} },520);
+    } else { setHistory(h=>[...h,{word:list[idx].word,ok:false,pts:0,reason:val?`입력: '${val}'`:null}]); setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(()=>{setShake(false);setGlow(null);setInput("");setTimeout(()=>iref.current?.focus(),40);},440); }
   };
 
-  useEffect(() => { loadBatch(); }, []);
-
-  // 미리 로딩
-  useEffect(() => {
-    if (quizList.length > 0 && quizList.length - current < 2) loadBatch();
-  }, [current, quizList]);
-
-  const checkAnswer = (e) => {
-    e.preventDefault();
-    if (input.trim() === quizList[current].word) {
-      setScore(s => s + 30);
-      alert("정답입니다! 명탐정이시군요 🕵️‍♂️");
-      setInput("");
-      setCurrent(c => c + 1);
-    } else {
-      alert(`검거 실패! 범인은 [${quizList[current].word}]였습니다.`);
-      // 현재 점수 가지고 나가기
-      onBack([quizList[current].word], score);
-    }
-  };
-
-  if (quizList.length === 0) return <div className="result-box"><h3>사건 파일을 여는 중...</h3></div>;
-  const quiz = quizList[current];
-
+  if(phase==="end") return <Rslt score={score} maxScore={list.length*30} onRetry={()=>{setIdx(0);setScore(0);setGlow(null);setInput("");setHistory([]);setPhase("playing");setTimeout(()=>iref.current?.focus(),80);}} onBack={onBack} extra={[["정답",history.filter(h=>h.ok).length+"/"+list.length]]} detail={history}/>;
+  const q=list[idx];
   return (
-    <div className="game-container">
-      <div className="header">
-        <button onClick={() => onBack([quiz.word], score)}>나가기</button> 
-        <span>{score}점</span>
+    <Wrap>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 17px",flexShrink:0}}>
+        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <div style={{color:"#e2e8f0",fontWeight:900,fontSize:"0.92rem"}}>🕵️ 연상 탐정</div>
+        <div style={{color:"#fff",fontWeight:900}}>{score}</div>
       </div>
-      
-      <div className="quiz-card" style={{justifyContent:'flex-start', paddingTop:'40px'}}>
-        <h3>🕵️ 연상 탐정 ({current + 1}번째 사건)</h3>
-        <p style={{color:'#888', marginBottom:'20px'}}>세 가지 단서를 보고 정답을 맞히세요!</p>
-        
-        <div style={{width:'90%', margin:'0 auto', textAlign:'left'}}>
-            <div style={{padding:'15px', background:'white', border:'2px solid #eee', borderRadius:'15px', marginBottom:'10px', fontSize:'1.2rem'}}>
-                🔍 단서 1: <b>{quiz.hints[0]}</b>
-            </div>
-            <div style={{padding:'15px', background:'white', border:'2px solid #eee', borderRadius:'15px', marginBottom:'10px', fontSize:'1.2rem'}}>
-                🔍 단서 2: <b>{quiz.hints[1]}</b>
-            </div>
-            <div style={{padding:'15px', background:'white', border:'2px solid #eee', borderRadius:'15px', marginBottom:'10px', fontSize:'1.2rem'}}>
-                🔍 단서 3: <b>{quiz.hints[2]}</b>
-            </div>
+      <Mid>
+        <Ptcl trigger={pt} color="#8b5cf6"/>
+        <div style={{color:"#334155",fontSize:"0.68rem",marginBottom:12}}>사건 {idx+1} / {list.length}</div>
+        <Card glow={glow} shake={shake}>
+          <div style={{color:"#64748b",fontSize:"0.7rem",textAlign:"center",marginBottom:14}}>🔍 세 가지 단서로 정체를 밝혀라!</div>
+          <div style={{display:"flex",flexDirection:"column",gap:9}}>
+            {q.hints.map((h,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"11px 14px",animation:`fadein .3s ease-out ${i*.1}s both`}}>
+                <span style={{color:["#6366f1","#a78bfa","#f59e0b"][i],fontWeight:700,fontSize:"0.78rem",flexShrink:0}}>단서 {i+1}</span>
+                <span style={{color:"#e2e8f0",fontWeight:600,fontSize:"0.98rem"}}>{h}</span>
+              </div>
+            ))}
+          </div>
+          {glow==="correct"&&<div style={{color:"#22c55e",textAlign:"center",fontWeight:700,marginTop:10}}>🎉 정답: {q.word}!</div>}
+          {glow==="wrong"&&<div style={{color:"#ef4444",textAlign:"center",fontSize:"0.82rem",marginTop:10}}>다시 생각해보세요!</div>}
+        </Card>
+        <div style={{display:"flex",gap:10,width:"100%",maxWidth:400,marginTop:14}}>
+          <TInput value={input} onChange={e=>{setInput(e.target.value);sfx.type();}} onEnter={submit} placeholder="정체는 바로..." glow={glow}/>
+          <SBtn onClick={submit} color="#8b5cf6">🔍</SBtn>
         </div>
-      </div>
-      
-      <form onSubmit={checkAnswer} className="input-area">
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="범인은 바로..." autoFocus />
-        <button type="submit">검거</button>
-      </form>
-    </div>
+        <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submit();}}} onChange={e=>setInput(e.target.value)} value={input}/>
+      </Mid>
+    </Wrap>
   );
 }
