@@ -1,116 +1,89 @@
 "use client";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
+import { collection, query, limit, getDocs } from "firebase/firestore";
 
-// 그룹별 합산할 필드 정의
-const RANKING_GROUPS = {
-  total: { name: "👑 종합 랭킹", fields: ["totalScore"] }, // totalScore는 이미 합산되어 있음
-  speed_zone: { name: "🕵️ 스피드왕", fields: ["best_speed", "best_twenty", "best_homonym"] },
-  pair_zone: { name: "🔗 짝꿍왕", fields: ["best_idiom", "best_synonym", "best_collocation"] },
-  initial_zone: { name: "🤫 초성왕", fields: ["best_initial", "best_factory"] },
-  arcade_zone: { name: "🕹️ 타자왕", fields: ["best_rain", "best_category"] },
-  wordchain: { name: "🧩 끝말잇기", fields: ["best_wordchain"] }
-};
+const TABS = [
+  { key:"total",     name:"👑 종합",      fields:["totalScore"] },
+  { key:"wordchain", name:"🧩 끝말잇기",  fields:["best_wordchain"] },
+  { key:"speed",     name:"⚡ 스피드",    fields:["best_speed"] },
+  { key:"initial",   name:"🤫 초성",      fields:["best_initial","best_factory"] },
+  { key:"idiom",     name:"🦁 사자성어",  fields:["best_idiom"] },
+  { key:"synonym",   name:"🔗 유의어",    fields:["best_synonym"] },
+  { key:"colloc",    name:"👫 짝꿍",      fields:["best_collocation"] },
+  { key:"twenty",    name:"👶 스무고개",  fields:["best_twenty"] },
+  { key:"homonym",   name:"🕵️ 연상탐정",  fields:["best_homonym"] },
+  { key:"sentence",  name:"🧩 문장조각",  fields:["best_sentence"] },
+  { key:"rain",      name:"🌧️ 단어비",    fields:["best_rain"] },
+  { key:"proverb",   name:"📜 속담",      fields:["best_proverb"] },
+  { key:"category",  name:"🌊 주제러쉬",  fields:["best_category"] },
+];
 
 export default function Ranking({ onBack }) {
-  const [activeTab, setActiveTab] = useState("total");
+  const [tab,     setTab]     = useState("total");
   const [rankers, setRankers] = useState([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const fetchRanking = async () => {
+    const fetch = async () => {
       setLoading(true);
       setRankers([]);
       try {
-        // 모든 유저를 가져와서 클라이언트에서 합산 정렬 (NoSQL의 한계로 인해 데이터가 많지 않을 때 유효)
-        // 만약 유저가 수천 명이면 DB 설계를 바꿔야 하지만, 현재 규모에선 이 방식이 가장 유연함.
-        const q = query(collection(db, "k_arena_users"), limit(50)); // 상위 50명 정도만 fetch
-        const snapshot = await getDocs(q);
-        
-        const data = snapshot.docs.map(doc => {
-          const u = doc.data();
-          // 현재 탭의 그룹 점수 계산
-          let groupScore = 0;
-          if (activeTab === "total") {
-            groupScore = u.totalScore || 0;
+        const snap = await getDocs(query(collection(db,"k_arena_users"), limit(100)));
+        const fields = TABS.find(t => t.key === tab)?.fields || ["totalScore"];
+        const data = snap.docs.map(d => {
+          const u = d.data();
+          let score = 0;
+          if (tab === "total") {
+            score = u.totalScore || 0;
           } else {
-            const fields = RANKING_GROUPS[activeTab].fields;
-            groupScore = fields.reduce((sum, field) => sum + (u[field] || 0), 0);
+            score = fields.reduce((s,f) => s + (u[f] || 0), 0);
           }
-          return { id: doc.id, nickname: u.nickname, score: groupScore };
+          return { id: d.id, nickname: u.nickname || "익명", score };
         });
-
-        // 점수 내림차순 정렬
-        const sorted = data.filter(u => u.score > 0).sort((a, b) => b.score - a.score).slice(0, 10);
-        setRankers(sorted);
-      } catch (error) {
-        console.error("랭킹 로딩 실패:", error);
-      } finally {
-        setLoading(false);
-      }
+        setRankers(data.filter(u => u.score > 0).sort((a,b) => b.score - a.score).slice(0,10));
+      } catch(e) { console.error("랭킹 오류:", e); }
+      setLoading(false);
     };
-    fetchRanking();
-  }, [activeTab]);
+    fetch();
+  }, [tab]);
+
+  const medal = (i) => i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`;
 
   return (
-    <div className="screen active" style={{maxWidth: '500px', height:'80vh', display:'flex', flexDirection:'column'}}>
-      <div className="header">
-        <h3 style={{margin:0}}>🏆 명예의 전당</h3>
-        <button onClick={onBack} style={{background:'#888', padding:'5px 10px', fontSize:'0.8rem'}}>닫기</button>
+    <div style={{ minHeight:"100dvh", background:"linear-gradient(160deg,#06090f,#0f172a)", display:"flex", flexDirection:"column", fontFamily:"'Nunito',system-ui,sans-serif", color:"#e2e8f0" }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap'); *{box-sizing:border-box}`}</style>
+
+      {/* 헤더 */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 18px", background:"rgba(255,255,255,.03)", borderBottom:"1px solid rgba(255,255,255,.07)", flexShrink:0 }}>
+        <button onClick={onBack} style={{ width:34, height:34, borderRadius:"50%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", color:"#64748b", cursor:"pointer", fontSize:"0.85rem", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"inherit" }}>✕</button>
+        <span style={{ fontWeight:900, fontSize:"1rem", color:"#fbbf24" }}>🏆 명예의 전당</span>
+        <div style={{ width:34 }}/>
       </div>
 
-      <div style={{
-        display:'flex', gap:'5px', padding:'10px', overflowX:'auto', 
-        borderBottom:'1px solid #ddd', background:'#f8f9fa', whiteSpace:'nowrap'
-      }}>
-        {Object.entries(RANKING_GROUPS).map(([key, info]) => (
-          <button 
-            key={key} 
-            onClick={() => setActiveTab(key)}
-            style={{
-              padding:'8px 12px', borderRadius:'20px', fontSize:'0.8rem',
-              background: activeTab === key ? '#4da6ff' : 'white',
-              color: activeTab === key ? 'white' : '#555',
-              border: '1px solid #ddd'
-            }}
-          >
-            {info.name}
+      {/* 탭 */}
+      <div style={{ flexShrink:0, overflowX:"auto", padding:"10px 14px", borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", gap:7, WebkitOverflowScrolling:"touch" }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{ flexShrink:0, padding:"7px 13px", borderRadius:20, fontSize:"0.76rem", fontWeight:800, fontFamily:"inherit", cursor:"pointer", border:"1px solid", borderColor: tab===t.key ? "#6366f1" : "rgba(255,255,255,.1)", background: tab===t.key ? "rgba(99,102,241,.2)" : "rgba(255,255,255,.04)", color: tab===t.key ? "#a78bfa" : "#64748b", transition:"all .15s" }}>
+            {t.name}
           </button>
         ))}
       </div>
-      
-      <div className="scroll-box" style={{background: 'white', flex:1, padding:0}}>
+
+      {/* 랭킹 목록 */}
+      <div style={{ flex:1, overflowY:"auto", padding:"8px 0" }}>
         {loading ? (
-          <div style={{padding:'40px', textAlign:'center', color:'#888'}}>랭킹 계산 중...</div>
+          <div style={{ padding:"48px", textAlign:"center", color:"#475569", fontSize:"0.85rem" }}>계산 중...</div>
+        ) : rankers.length === 0 ? (
+          <div style={{ padding:"48px", textAlign:"center", color:"#334155", fontSize:"0.85rem" }}>아직 기록이 없어요</div>
         ) : (
-          <table style={{width: '100%', borderCollapse: 'collapse'}}>
-            <thead>
-              <tr style={{background: '#fff', borderBottom: '2px solid #eee', color: '#666', fontSize:'0.9rem'}}>
-                <th style={{padding: '12px'}}>순위</th>
-                <th style={{padding: '12px', textAlign:'left'}}>닉네임</th>
-                <th style={{padding: '12px', textAlign:'right'}}>점수</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rankers.map((user, index) => (
-                <tr key={user.id} style={{borderBottom: '1px solid #f5f5f5', height: '55px'}}>
-                  <td style={{textAlign: 'center', fontWeight: 'bold', fontSize:'1.1rem', color: index < 3 ? '#ff6b6b' : '#333'}}>
-                    {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
-                  </td>
-                  <td style={{textAlign: 'left', fontWeight: 'bold'}}>
-                    {user.nickname || '익명'}
-                  </td>
-                  <td style={{textAlign: 'right', paddingRight:'20px', color: '#4da6ff', fontWeight:'bold'}}>
-                    {user.score.toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-              {rankers.length === 0 && (
-                <tr><td colSpan="3" style={{padding:'40px', textAlign:'center', color:'#ccc'}}>랭킹 기록이 없습니다.</td></tr>
-              )}
-            </tbody>
-          </table>
+          rankers.map((u, i) => (
+            <div key={u.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px", borderBottom:"1px solid rgba(255,255,255,.04)", background: i===0?"rgba(255,199,0,.04)":i===1?"rgba(200,200,200,.03)":i===2?"rgba(200,120,40,.03)":"transparent" }}>
+              <span style={{ width:32, textAlign:"center", fontSize:i<3?"1.4rem":"0.95rem", fontWeight:900, color:i<3?"#fbbf24":"#475569", flexShrink:0 }}>{medal(i)}</span>
+              <span style={{ flex:1, fontWeight:800, fontSize:"0.95rem", color:"#e2e8f0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.nickname}</span>
+              <span style={{ fontWeight:900, fontSize:"1rem", color: i===0?"#fbbf24":i===1?"#94a3b8":i===2?"#b87333":"#6366f1", flexShrink:0 }}>{u.score.toLocaleString()}점</span>
+            </div>
+          ))
         )}
       </div>
     </div>
