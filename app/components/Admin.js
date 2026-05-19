@@ -1,19 +1,99 @@
 "use client";
 import { useState, useEffect } from "react";
 import { auth, db } from "@/lib/firebase";
-import { collection, getDocs, orderBy, query, doc, setDoc, deleteDoc, getDoc, Timestamp } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, doc, setDoc, deleteDoc, Timestamp } from "firebase/firestore";
 
 const ADMIN_EMAIL = "ot.helper7@gmail.com";
 
+// ── 컬렉션 ID는 게임 파일의 로딩 코드와 반드시 일치해야 함 ──
 const GAME_TYPES = [
-  { id:"speed",      name:"스피드 퀴즈",    prompt:'한국어 스피드 퀴즈 10문제. 설명을 읽고 단어를 맞히는 형식. JSON만: [{"word":"단어","description":"설명(20자이내)","level":1}]' },
-  { id:"initial",    name:"초성 퀴즈",      prompt:'한국어 초성 퀴즈 10문제. 초성과 힌트 3개. JSON만: [{"ini":"ㅅㄱ","w":"사과","h":["힌트1","힌트2","힌트3"]}]' },
-  { id:"idiom",      name:"사자성어 잇기",  prompt:'한국어 사자성어 잇기 10문제. 앞 두 글자와 뒤 두 글자, 뜻. JSON만: [{"f":"일석","b":"이조","m":"뜻"}]' },
-  { id:"proverb",    name:"속담 이어달리기",prompt:'한국 속담 10개. 앞부분 보고 뒷부분 맞히기. JSON만: [{"question":"가는 말이 고와야","answer":"오는 말이 곱다"}]' },
-  { id:"synonym",    name:"유의어 잇기",    prompt:'한국어 유의어 쌍 10개. 서로 비슷한 뜻의 단어. JSON만: [{"w":"기쁨","a":"즐거움"}]' },
-  { id:"colloc",     name:"짝꿍 단어",      prompt:'한국어 콜로케이션(짝꿍) 퀴즈 8개. 목적어와 어울리는 동사 4지선다. JSON만: [{"q":"꿈을","a":"꾸다","o":["꾸다","쓰다","먹다","하다"]}]' },
-  { id:"twenty",     name:"스무고개",       prompt:'스무고개 퀴즈 8개. 정답과 힌트 4개(점점 구체적으로). JSON만: [{"word":"냉장고","hints":["힌트1","힌트2","힌트3","힌트4"]}]' },
-  { id:"detective",  name:"연상 탐정",      prompt:'연상 퀴즈 8개. 단서 3개로 정답 맞히기. JSON만: [{"word":"바나나","hints":["노란색","달콤해요","원숭이"]}]' },
+  {
+    id: "speed", name: "스피드 퀴즈",
+    prompt: `한국어 스피드 퀴즈 15문제를 만들어줘.
+규칙:
+- 설명은 초등학생 3학년도 바로 이해할 수 있을 만큼 쉽고 직관적으로
+- 이모지 1~2개 포함, 15자 이내
+- 일상에서 자주 쓰는 쉬운 명사 위주 (어려운 단어 금지)
+- 모든 단어가 서로 달라야 함 (중복 금지)
+좋은 예시: {"word":"사과","description":"🍎 빨갛고 달콤한 과일"}
+나쁜 예시: {"word":"개념","description":"추상적 사고의 단위"} (너무 어려움)
+JSON 배열만 반환: [{"word":"단어","description":"설명"}]`,
+  },
+  {
+    id: "initial", name: "초성 퀴즈",
+    prompt: `한국어 초성 퀴즈 15문제를 만들어줘.
+규칙:
+- 초등학생도 알 만한 쉬운 단어
+- 힌트 3개는 점점 구체적으로 (힌트1이 가장 어렵고 힌트3이 가장 쉬움)
+- 초성이 실제 단어와 일치하는지 반드시 확인
+- 중복 단어 금지
+예시: {"ini":"ㅅㄱ","w":"사과","h":["빨간색이에요","달콤해요","🍎 과일이에요"]}
+JSON 배열만 반환: [{"ini":"초성","w":"정답","h":["힌트1","힌트2","힌트3"]}]`,
+  },
+  {
+    id: "idiom", name: "사자성어 잇기",
+    prompt: `한국어 사자성어 잇기 12문제를 만들어줘.
+규칙:
+- 실제 존재하는 사자성어만 (꾸며내지 말 것)
+- 중학생도 알 만한 것 위주
+- 뜻 설명은 쉽게
+- 앞 두 글자 + 뒤 두 글자가 정확히 맞을 것
+- 중복 금지
+JSON 배열만 반환: [{"f":"일석","b":"이조","m":"한 번에 두 가지 이득을 얻음"}]`,
+  },
+  {
+    id: "proverb", name: "속담 이어달리기",
+    prompt: `한국 속담 15개를 만들어줘.
+규칙:
+- 초등학생도 알 만한 친숙한 속담
+- 앞부분과 뒷부분이 명확하게 나뉘는 것
+- 중복 금지
+- 실제 존재하는 속담만
+예시: {"question":"가는 말이 고와야","answer":"오는 말이 곱다"}
+JSON 배열만 반환: [{"question":"앞부분","answer":"뒷부분"}]`,
+  },
+  {
+    id: "synonym", name: "유의어 잇기",
+    prompt: `한국어 유의어 쌍 15개를 만들어줘.
+규칙:
+- 중학생이 알 만한 단어
+- 실제로 뜻이 비슷한 쌍 (억지 유의어 금지)
+- 중복 금지
+예시: {"w":"기쁨","a":"즐거움"}
+JSON 배열만 반환: [{"w":"기준단어","a":"유의어"}]`,
+  },
+  {
+    id: "collocation", name: "짝꿍 단어",
+    prompt: `한국어 콜로케이션(짝꿍) 퀴즈 12개를 만들어줘.
+규칙:
+- 목적어 + 동사 짝꿍 (예: "꿈을 꾸다", "신발을 신다")
+- 4개의 선택지 중 1개만 정답 (나머지 3개는 어울리지 않는 동사)
+- 초등학생도 이해할 수 있는 수준
+- 중복 금지
+JSON 배열만 반환: [{"q":"목적어","a":"정답동사","o":["정답","오답1","오답2","오답3"]}]
+※ o 배열은 반드시 정답을 포함한 4개여야 함`,
+  },
+  {
+    id: "twenty", name: "스무고개",
+    prompt: `스무고개 퀴즈 10개를 만들어줘.
+규칙:
+- 초등학생도 알 만한 사물, 동물, 음식 등
+- 힌트 4개: 점점 더 구체적으로 (힌트1=가장 막연, 힌트4=거의 답이 보임)
+- 중복 금지
+예시: {"word":"냉장고","hints":["집 안에 있어요","전기를 써요","음식을 넣어요","차갑게 보관해요"]}
+JSON 배열만 반환: [{"word":"정답","hints":["힌트1","힌트2","힌트3","힌트4"]}]`,
+  },
+  {
+    id: "homonym", name: "연상 탐정",
+    prompt: `연상 퀴즈 10개를 만들어줘.
+규칙:
+- 단서 3개로 정답을 맞히는 게임
+- 단서 3개는 모두 정답과 관련되지만 직접적으로 말하지 않음
+- 초등학생도 알 만한 단어
+- 중복 금지
+예시: {"word":"바나나","hints":["노란색","원숭이가 좋아해","구부러진 모양"]}
+JSON 배열만 반환: [{"word":"정답","hints":["단서1","단서2","단서3"]}]`,
+  },
 ];
 
 const CSS = `
@@ -24,25 +104,23 @@ const CSS = `
 `;
 
 export default function Admin({ onBack }) {
-  const [tab,      setTab]      = useState("users");       // users | quiz
-  const [users,    setUsers]    = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [allowed,  setAllowed]  = useState(false);
-
-  // 퀴즈 검수 관련
-  const [quizType,    setQuizType]    = useState("speed");
-  const [generating,  setGenerating]  = useState(false);
-  const [generated,   setGenerated]   = useState([]);   // 생성된 원본
-  const [reviewing,   setReviewing]   = useState([]);   // 검수 중 (승인/거절 포함)
-  const [saved,       setSaved]       = useState([]);   // 저장된 퀴즈 목록
-  const [genError,    setGenError]    = useState("");
+  const [tab,        setTab]        = useState("users");
+  const [users,      setUsers]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [allowed,    setAllowed]    = useState(false);
+  const [quizType,   setQuizType]   = useState("speed");
+  const [generating, setGenerating] = useState(false);
+  const [reviewing,  setReviewing]  = useState([]);
+  const [saved,      setSaved]      = useState([]);
+  const [genError,   setGenError]   = useState("");
+  const [genCount,   setGenCount]   = useState(0); // 생성 횟수 (중복 방지용 seed)
 
   useEffect(() => {
     const u = auth.currentUser;
     if (u?.email === ADMIN_EMAIL) {
       setAllowed(true);
       fetchUsers();
-      loadSavedQuizzes("speed");
+      loadSaved("speed");
     } else {
       setAllowed(false);
       setLoading(false);
@@ -52,39 +130,61 @@ export default function Admin({ onBack }) {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const qs = await getDocs(query(collection(db,"k_arena_users"), orderBy("lastLogin","desc")));
+      const qs = await getDocs(query(collection(db, "k_arena_users"), orderBy("lastLogin", "desc")));
       setUsers(qs.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch(e) { console.error(e); }
+    } catch (e) { console.error(e); }
     setLoading(false);
   };
 
   // Gemini로 퀴즈 생성
   const generateQuiz = async () => {
-    setGenerating(true); setGenError(""); setGenerated([]); setReviewing([]);
+    setGenerating(true); setGenError(""); setReviewing([]);
     const gt = GAME_TYPES.find(g => g.id === quizType);
+
+    // 이미 저장된 단어 목록 추출 (중복 방지)
+    const existingWords = saved.map(q => q.word || q.w || q.f || q.question || "").filter(Boolean);
+    const dedupeNote = existingWords.length > 0
+      ? `\n\n⚠️ 이미 저장된 항목이므로 제외: ${JSON.stringify(existingWords.slice(0, 20))}`
+      : "";
+
+    const prompt = gt.prompt + dedupeNote + `\n\n생성 세션: ${genCount + 1} (매번 다른 문제를 생성할 것)`;
+
     try {
-      const res = await fetch("/api/gemini", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ prompt: gt.prompt + "\n중복 없이, 난이도 다양하게." })
+      const res  = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
       });
-      const d = await res.json();
-      const text = (d.text || "[]").replace(/```json|```/g,"").trim();
+      if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+      const d    = await res.json();
+      if (d.error) throw new Error(d.error);
+      const text = (d.text || "[]").replace(/```json|```/g, "").trim();
       const match = text.match(/\[[\s\S]*\]/);
-      const items = match ? JSON.parse(match[0]) : [];
-      setGenerated(items);
-      setReviewing(items.map((item, i) => ({ ...item, _id: i, _status: "pending" })));
-    } catch(e) {
-      setGenError("생성 실패: " + e.message);
+      if (!match) throw new Error("JSON 파싱 실패: " + text.slice(0, 100));
+      const items = JSON.parse(match[0]);
+      if (!Array.isArray(items) || items.length === 0) throw new Error("생성된 문제가 없어요");
+
+      // 로컬 중복 제거
+      const seenKeys = new Set(existingWords);
+      const deduped = items.filter(item => {
+        const key = item.word || item.w || item.f || item.question || JSON.stringify(item);
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      });
+
+      setReviewing(deduped.map((item, i) => ({ ...item, _id: i, _status: "pending" })));
+      setGenCount(c => c + 1);
+    } catch (e) {
+      setGenError("❌ " + e.message);
     }
     setGenerating(false);
   };
 
-  // 개별 승인/거절
   const setStatus = (id, status) => {
     setReviewing(prev => prev.map(q => q._id === id ? { ...q, _status: status } : q));
   };
 
-  // 승인된 항목 Firestore 저장
   const saveApproved = async () => {
     const approved = reviewing.filter(q => q._status === "approved");
     if (!approved.length) { alert("승인된 문제가 없습니다."); return; }
@@ -96,30 +196,26 @@ export default function Admin({ onBack }) {
       }
       alert(`✅ ${approved.length}개 저장 완료!`);
       setReviewing([]);
-      loadSavedQuizzes(quizType);
-    } catch(e) { alert("저장 실패: " + e.message); }
+      loadSaved(quizType);
+    } catch (e) { alert("저장 실패: " + e.message); }
   };
 
-  // 저장된 퀴즈 불러오기
-  const loadSavedQuizzes = async (type) => {
+  const loadSaved = async (type) => {
     try {
       const qs = await getDocs(collection(db, `quiz_${type}`));
       setSaved(qs.docs.map(d => ({ _docId: d.id, ...d.data() })));
-    } catch(e) { setSaved([]); }
+    } catch { setSaved([]); }
   };
 
-  // 저장된 퀴즈 삭제
   const deleteQuiz = async (docId) => {
     if (!confirm("삭제할까요?")) return;
     await deleteDoc(doc(db, `quiz_${quizType}`, docId));
     setSaved(prev => prev.filter(q => q._docId !== docId));
   };
 
-  const handleTabQuizType = (type) => {
-    setQuizType(type);
-    setReviewing([]);
-    setGenerated([]);
-    loadSavedQuizzes(type);
+  const handleTypeChange = (type) => {
+    setQuizType(type); setReviewing([]); setGenError("");
+    loadSaved(type);
   };
 
   if (!allowed) {
@@ -142,7 +238,7 @@ export default function Admin({ onBack }) {
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"13px 16px", background:"rgba(255,255,255,.03)", borderBottom:"1px solid rgba(255,255,255,.07)", flexShrink:0 }}>
         <button onClick={() => onBack()} style={{ width:33, height:33, borderRadius:"50%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", color:"#64748b", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
         <span style={{ fontWeight:900, fontSize:"1rem", color:"#f87171" }}>🔒 관리자 페이지</span>
-        <div style={{ width:33 }}/>
+        <div style={{ width:33 }} />
       </div>
 
       {/* 탭 */}
@@ -152,7 +248,7 @@ export default function Admin({ onBack }) {
         ))}
       </div>
 
-      {/* ── 유저 관리 탭 ── */}
+      {/* ── 유저 관리 ── */}
       {tab === "users" && (
         <div style={{ flex:1, overflowY:"auto", padding:"10px 14px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
@@ -165,8 +261,8 @@ export default function Admin({ onBack }) {
             <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
               {users.map(u => (
                 <div key={u.id} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:"12px 14px", animation:"fadein .3s ease-out" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:5 }}>
-                    <span style={{ fontWeight:800, fontSize:"0.88rem", color:"#e2e8f0" }}>{u.nickname || "이름없음"}</span>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                    <span style={{ fontWeight:800, fontSize:"0.88rem" }}>{u.nickname || "이름없음"}</span>
                     <span style={{ color:"#fbbf24", fontWeight:800, fontSize:"0.86rem" }}>{(u.totalScore||0).toLocaleString()}점</span>
                   </div>
                   <div style={{ color:"#475569", fontSize:"0.68rem", lineHeight:1.8 }}>
@@ -184,42 +280,54 @@ export default function Admin({ onBack }) {
         </div>
       )}
 
-      {/* ── 퀴즈 검수 탭 ── */}
+      {/* ── 퀴즈 검수 ── */}
       {tab === "quiz" && (
         <div style={{ flex:1, overflowY:"auto", padding:"10px 14px" }}>
 
           {/* 게임 타입 선택 */}
           <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
             {GAME_TYPES.map(g => (
-              <button key={g.id} onClick={() => handleTabQuizType(g.id)} style={{ padding:"5px 11px", borderRadius:16, fontSize:"0.72rem", fontWeight:800, fontFamily:"inherit", cursor:"pointer", border:"1px solid", borderColor:quizType===g.id?"#f59e0b":"rgba(255,255,255,.1)", background:quizType===g.id?"rgba(245,158,11,.15)":"rgba(255,255,255,.04)", color:quizType===g.id?"#f59e0b":"#64748b" }}>{g.name}</button>
+              <button key={g.id} onClick={() => handleTypeChange(g.id)} style={{ padding:"5px 11px", borderRadius:16, fontSize:"0.72rem", fontWeight:800, fontFamily:"inherit", cursor:"pointer", border:"1px solid", borderColor:quizType===g.id?"#f59e0b":"rgba(255,255,255,.1)", background:quizType===g.id?"rgba(245,158,11,.15)":"rgba(255,255,255,.04)", color:quizType===g.id?"#f59e0b":"#64748b" }}>
+                {g.name}
+              </button>
             ))}
           </div>
 
+          {/* 저장 현황 */}
+          <div style={{ background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.2)", borderRadius:10, padding:"8px 13px", marginBottom:12, fontSize:"0.76rem", color:"#a78bfa" }}>
+            📦 현재 저장된 문제: <b>{saved.length}개</b>
+            {saved.length > 0 && <span style={{ color:"#64748b" }}> (새 생성 시 중복 자동 제외)</span>}
+          </div>
+
           {/* 생성 버튼 */}
-          <div style={{ display:"flex", gap:10, marginBottom:12, alignItems:"center" }}>
+          <div style={{ display:"flex", gap:10, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
             <button onClick={generateQuiz} disabled={generating} style={{ background:generating?"#1e293b":"linear-gradient(135deg,#6366f1,#8b5cf6)", border:"none", borderRadius:12, color:"#fff", fontWeight:800, fontSize:"0.82rem", padding:"10px 20px", cursor:generating?"not-allowed":"pointer", fontFamily:"inherit", opacity:generating?.6:1 }}>
-              {generating ? "⏳ Gemini 생성 중..." : "🤖 Gemini로 문제 생성"}
+              {generating ? "⏳ 생성 중..." : "🤖 Gemini로 문제 생성"}
             </button>
             {reviewing.filter(q=>q._status==="approved").length > 0 && (
               <button onClick={saveApproved} style={{ background:"linear-gradient(135deg,#22c55e,#16a34a)", border:"none", borderRadius:12, color:"#fff", fontWeight:800, fontSize:"0.82rem", padding:"10px 20px", cursor:"pointer", fontFamily:"inherit" }}>
-                ✅ 승인 {reviewing.filter(q=>q._status==="approved").length}개 저장
+                ✅ {reviewing.filter(q=>q._status==="approved").length}개 저장
               </button>
             )}
           </div>
-          {genError && <div style={{ color:"#ef4444", fontSize:"0.78rem", marginBottom:8 }}>{genError}</div>}
+          {genError && <div style={{ color:"#ef4444", fontSize:"0.78rem", marginBottom:10, padding:"8px 12px", background:"rgba(239,68,68,.1)", borderRadius:8 }}>{genError}</div>}
 
           {/* 검수 목록 */}
           {reviewing.length > 0 && (
             <div style={{ marginBottom:20 }}>
-              <div style={{ color:"#94a3b8", fontSize:"0.72rem", fontWeight:800, marginBottom:8, letterSpacing:".08em" }}>— 검수 중 ({reviewing.length}개) —</div>
+              <div style={{ color:"#94a3b8", fontSize:"0.71rem", fontWeight:800, marginBottom:8 }}>— 검수 중 ({reviewing.length}개) —</div>
+              <div style={{ marginBottom:8, display:"flex", gap:8 }}>
+                <button onClick={() => setReviewing(p => p.map(q => ({...q, _status:"approved"})))} style={{ padding:"5px 12px", borderRadius:8, background:"rgba(34,197,94,.15)", border:"1px solid rgba(34,197,94,.3)", color:"#22c55e", fontSize:"0.72rem", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>전체 승인</button>
+                <button onClick={() => setReviewing(p => p.map(q => ({...q, _status:"rejected"})))} style={{ padding:"5px 12px", borderRadius:8, background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.3)", color:"#ef4444", fontSize:"0.72rem", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>전체 거절</button>
+              </div>
               <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {reviewing.map(q => (
-                  <div key={q._id} style={{ background: q._status==="approved"?"rgba(34,197,94,.08)":q._status==="rejected"?"rgba(239,68,68,.08)":"rgba(255,255,255,.04)", border:`1px solid ${q._status==="approved"?"rgba(34,197,94,.3)":q._status==="rejected"?"rgba(239,68,68,.3)":"rgba(255,255,255,.08)"}`, borderRadius:13, padding:"11px 13px", animation:"fadein .3s ease-out" }}>
-                    <QuizPreview item={q} gameType={quizType}/>
-                    <div style={{ display:"flex", gap:8, marginTop:8 }}>
-                      <button onClick={() => setStatus(q._id,"approved")} style={{ padding:"5px 14px", borderRadius:8, background:q._status==="approved"?"#22c55e":"rgba(34,197,94,.15)", border:`1px solid ${q._status==="approved"?"#22c55e":"rgba(34,197,94,.3)"}`, color:q._status==="approved"?"#fff":"#22c55e", fontSize:"0.74rem", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>✅ 승인</button>
-                      <button onClick={() => setStatus(q._id,"rejected")} style={{ padding:"5px 14px", borderRadius:8, background:q._status==="rejected"?"#ef4444":"rgba(239,68,68,.12)", border:`1px solid ${q._status==="rejected"?"#ef4444":"rgba(239,68,68,.3)"}`, color:q._status==="rejected"?"#fff":"#ef4444", fontSize:"0.74rem", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>❌ 거절</button>
-                      <button onClick={() => setStatus(q._id,"pending")} style={{ padding:"5px 10px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#64748b", fontSize:"0.74rem", cursor:"pointer", fontFamily:"inherit" }}>↩ 보류</button>
+                  <div key={q._id} style={{ background:q._status==="approved"?"rgba(34,197,94,.07)":q._status==="rejected"?"rgba(239,68,68,.07)":"rgba(255,255,255,.04)", border:`1px solid ${q._status==="approved"?"rgba(34,197,94,.25)":q._status==="rejected"?"rgba(239,68,68,.25)":"rgba(255,255,255,.08)"}`, borderRadius:12, padding:"10px 13px", animation:"fadein .25s ease-out" }}>
+                    <QuizPreview item={q} gameType={quizType} />
+                    <div style={{ display:"flex", gap:7, marginTop:8 }}>
+                      <button onClick={() => setStatus(q._id,"approved")} style={{ padding:"4px 12px", borderRadius:7, background:q._status==="approved"?"#22c55e":"rgba(34,197,94,.15)", border:`1px solid ${q._status==="approved"?"#22c55e":"rgba(34,197,94,.3)"}`, color:q._status==="approved"?"#fff":"#22c55e", fontSize:"0.72rem", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>✅ 승인</button>
+                      <button onClick={() => setStatus(q._id,"rejected")} style={{ padding:"4px 12px", borderRadius:7, background:q._status==="rejected"?"#ef4444":"rgba(239,68,68,.12)", border:`1px solid ${q._status==="rejected"?"#ef4444":"rgba(239,68,68,.3)"}`, color:q._status==="rejected"?"#fff":"#ef4444", fontSize:"0.72rem", fontWeight:800, cursor:"pointer", fontFamily:"inherit" }}>❌ 거절</button>
+                      <button onClick={() => setStatus(q._id,"pending")} style={{ padding:"4px 10px", borderRadius:7, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#64748b", fontSize:"0.72rem", cursor:"pointer", fontFamily:"inherit" }}>↩ 보류</button>
                     </div>
                   </div>
                 ))}
@@ -229,17 +337,15 @@ export default function Admin({ onBack }) {
 
           {/* 저장된 퀴즈 */}
           <div>
-            <div style={{ color:"#94a3b8", fontSize:"0.72rem", fontWeight:800, marginBottom:8, letterSpacing:".08em" }}>— 저장된 문제 ({saved.length}개) —</div>
+            <div style={{ color:"#94a3b8", fontSize:"0.71rem", fontWeight:800, marginBottom:8 }}>— 저장된 문제 ({saved.length}개) —</div>
             {saved.length === 0 ? (
-              <div style={{ color:"#334155", fontSize:"0.8rem", padding:"16px 0" }}>저장된 문제가 없습니다.</div>
+              <div style={{ color:"#334155", fontSize:"0.8rem", padding:"12px 0" }}>저장된 문제가 없습니다.</div>
             ) : (
-              <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
                 {saved.map(q => (
-                  <div key={q._docId} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"10px 13px", display:"flex", alignItems:"flex-start", gap:10 }}>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <QuizPreview item={q} gameType={quizType}/>
-                    </div>
-                    <button onClick={() => deleteQuiz(q._docId)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:8, color:"#f87171", fontSize:"0.72rem", padding:"4px 9px", cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>삭제</button>
+                  <div key={q._docId} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:11, padding:"9px 12px", display:"flex", alignItems:"flex-start", gap:10 }}>
+                    <div style={{ flex:1, minWidth:0 }}><QuizPreview item={q} gameType={quizType} /></div>
+                    <button onClick={() => deleteQuiz(q._docId)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:7, color:"#f87171", fontSize:"0.7rem", padding:"4px 8px", cursor:"pointer", fontFamily:"inherit", flexShrink:0 }}>삭제</button>
                   </div>
                 ))}
               </div>
@@ -251,28 +357,27 @@ export default function Admin({ onBack }) {
   );
 }
 
-// 게임 타입별 퀴즈 미리보기
 function QuizPreview({ item, gameType }) {
-  const s = { color:"#e2e8f0", fontSize:"0.82rem", lineHeight:1.6 };
-  const m = { color:"#64748b", fontSize:"0.72rem" };
-  switch(gameType) {
+  const s = { color:"#e2e8f0", fontSize:"0.81rem", lineHeight:1.6 };
+  const g = { color:"#64748b", fontSize:"0.71rem" };
+  switch (gameType) {
     case "speed":
-      return <div style={s}><b style={{color:"#a78bfa"}}>{item.word}</b> <span style={m}>— {item.description}</span></div>;
+      return <div style={s}><b style={{color:"#a78bfa"}}>{item.word}</b><span style={g}> — {item.description}</span></div>;
     case "initial":
-      return <div style={s}><b style={{color:"#a78bfa"}}>{item.ini}</b> → <b>{item.w}</b> <span style={m}>| {(item.h||[]).join(" / ")}</span></div>;
+      return <div style={s}><b style={{color:"#a78bfa"}}>{item.ini}</b> → <b>{item.w}</b><span style={g}> | {(item.h||[]).join(" / ")}</span></div>;
     case "idiom":
-      return <div style={s}><b style={{color:"#f59e0b"}}>{item.f}</b><b>{item.b}</b> <span style={m}>— {item.m}</span></div>;
+      return <div style={s}><b style={{color:"#f59e0b"}}>{item.f}{item.b}</b><span style={g}> — {item.m}</span></div>;
     case "proverb":
-      return <div style={s}><span style={{color:"#94a3b8"}}>{item.question}</span> → <b>{item.answer}</b></div>;
+      return <div style={s}><span style={{color:"#94a3b8"}}>{item.question}</span><span style={g}> → </span><b>{item.answer}</b></div>;
     case "synonym":
-      return <div style={s}><b style={{color:"#06b6d4"}}>{item.w}</b> <span style={m}>≒</span> <b>{item.a}</b></div>;
-    case "colloc":
-      return <div style={s}><b style={{color:"#ec4899"}}>{item.q}</b> → <b>{item.a}</b> <span style={m}>| {(item.o||[]).join(", ")}</span></div>;
+      return <div style={s}><b style={{color:"#06b6d4"}}>{item.w}</b><span style={g}> ≒ </span><b>{item.a}</b></div>;
+    case "collocation":
+      return <div style={s}><b style={{color:"#ec4899"}}>{item.q}</b> → <b>{item.a}</b><span style={g}> | {(item.o||[]).join(", ")}</span></div>;
     case "twenty":
-      return <div style={s}><b style={{color:"#f59e0b"}}>{item.word}</b> <span style={m}>| {(item.hints||[]).slice(0,2).join(" / ")}...</span></div>;
-    case "detective":
-      return <div style={s}><b style={{color:"#8b5cf6"}}>{item.word}</b> <span style={m}>| {(item.hints||[]).join(" / ")}</span></div>;
+      return <div style={s}><b style={{color:"#f59e0b"}}>{item.word}</b><span style={g}> | {(item.hints||[]).slice(0,2).join(" / ")}...</span></div>;
+    case "homonym":
+      return <div style={s}><b style={{color:"#8b5cf6"}}>{item.word}</b><span style={g}> | {(item.hints||[]).join(" / ")}</span></div>;
     default:
-      return <div style={s}>{JSON.stringify(item).slice(0,80)}...</div>;
+      return <div style={s}>{JSON.stringify(item).slice(0,80)}</div>;
   }
 }

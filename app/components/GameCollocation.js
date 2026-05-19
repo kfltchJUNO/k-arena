@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
+import { loadQuiz } from "@/lib/quizLoader";
 
 // ── GAME 4: 짝꿍 단어 ─────────────────────────────────────────
 const CD = [
@@ -15,7 +16,11 @@ const CD = [
 ];
 function GameColloc({ onBack }) {
   const sfx = useSFX();
-  const [list] = useState(() => [...CD].sort(() => Math.random() - .5));
+  const [list, setList] = useState([]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadQuiz("quiz_collocation", CD, 20).then(items => { setList(items); setReady(true); });
+  }, []);
   const [idx, setIdx] = useState(0); const [score, setScore] = useState(0);
   const [sel, setSel] = useState(null); const [phase, setPhase] = useState("playing"); const [pt, setPt] = useState(0);
 
@@ -28,6 +33,8 @@ function GameColloc({ onBack }) {
       else { setIdx(i => i + 1); setSel(null); }
     }, 750);
   };
+
+  if (!ready) return <Wrap><Mid><div style={{color:"#475569",fontSize:"0.85rem"}}>문제 불러오는 중...</div></Mid></Wrap>;
 
   if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setSel(null); setPhase("playing"); sfx.start(); }} onBack={onBack} />;
   const q = list[idx];

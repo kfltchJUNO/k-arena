@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
+import { loadQuiz } from "@/lib/quizLoader";
 
 // ── GAME 7: 속담 이어달리기 ───────────────────────────────────
 const PD = [
@@ -13,7 +14,11 @@ const PD = [
 ];
 export default function GameProverb({ onBack }) {
   const sfx = useSFX();
-  const [list] = useState(() => [...PD].sort(() => Math.random() - .5));
+  const [list, setList] = useState([]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadQuiz("quiz_proverb", PD, 20).then(items => { setList(items); setReady(true); });
+  }, []);
   const [idx, setIdx] = useState(0); const [score, setScore] = useState(0);
   const [input, setInput] = useState(""); const [phase, setPhase] = useState("playing");
   const [glow, setGlow] = useState(null); const [shake, setShake] = useState(false);
@@ -36,6 +41,8 @@ export default function GameProverb({ onBack }) {
     } catch { passQ(val); }
     finally { setChecking(false); }
   };
+
+  if (!ready) return <Wrap><Mid><div style={{color:"#475569",fontSize:"0.85rem"}}>문제 불러오는 중...</div></Mid></Wrap>;
 
   if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setInput(""); setGlow(null); setHistory([]); setPhase("playing"); setTimeout(() => iref.current?.focus(), 100); }} onBack={onBack} extra={[["정답", history.filter(h=>h.ok).length+"/"+list.length]]} detail={history} />;
   const q = list[idx];

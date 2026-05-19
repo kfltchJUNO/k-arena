@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
+import { loadQuiz } from "@/lib/quizLoader";
 
 // ── GAME 3: 사자성어 ──────────────────────────────────────────
 const IDD = [
@@ -13,25 +14,31 @@ const IDD = [
 ];
 export default function GameIdiom({ onBack }) {
   const sfx = useSFX();
-  const [list] = useState(() => [...IDD].sort(() => Math.random() - .5));
+  const [list, setList] = useState([]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadQuiz("quiz_idiom", IDD, 20).then(items => { setList(items); setReady(true); });
+  }, []);
   const [idx, setIdx] = useState(0); const [score, setScore] = useState(0); const [input, setInput] = useState("");
   const [phase, setPhase] = useState("playing"); const [glow, setGlow] = useState(null); const [shake, setShake] = useState(false);
   const [showM, setShowM] = useState(false); const [pt, setPt] = useState(0);
   const iref = useRef(null);
-  useEffect(() => setTimeout(() => iref.current?.focus(), 80), []);
+  useEffect(() => setTimeout(() => iref.current?.focus(), 100), []);
 
   const submit = () => {
     if (!input.trim() || showM) return;
     if (input.trim().replace(/\s/g, "") === list[idx].b) {
       setScore(s => s + 20); setPt(p => p + 1); setGlow("correct"); setShowM(true); sfx.correct();
-    } else { setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(() => { setShake(false); setGlow(null); setInput(""); setTimeout(() => iref.current?.focus(), 40); }, 440); }
+    } else { setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(() => { setShake(false); setGlow(null); setInput(""); setTimeout(() => iref.current?.focus(), 100); }, 440); }
   };
   const next = () => {
     if (idx + 1 >= list.length) { setPhase("end"); sfx.done(); }
-    else { setIdx(i => i + 1); setGlow(null); setInput(""); setShowM(false); setTimeout(() => iref.current?.focus(), 50); }
+    else { setIdx(i => i + 1); setGlow(null); setInput(""); setShowM(false); setTimeout(() => iref.current?.focus(), 100); }
   };
 
-  if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setGlow(null); setInput(""); setShowM(false); setPhase("playing"); setTimeout(() => iref.current?.focus(), 80); }} onBack={onBack} />;
+  if (!ready) return <Wrap><Mid><div style={{color:"#475569",fontSize:"0.85rem"}}>문제 불러오는 중...</div></Mid></Wrap>;
+
+  if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setGlow(null); setInput(""); setShowM(false); setPhase("playing"); setTimeout(() => iref.current?.focus(), 100); }} onBack={onBack} />;
   const q = list[idx];
   return (
     <Wrap>
@@ -55,7 +62,7 @@ export default function GameIdiom({ onBack }) {
         </Card>
         {!showM ? (
           <div style={{ display: "flex", gap: 10, width: "100%", maxWidth: 400, marginTop: 14 }}>
-            <TInput value={input} onChange={e => { setInput(e.target.value); sfx.type(); }} onEnter={submit} placeholder="뒤 두 글자를 입력하세요" glow={glow} />
+            <TInput inputRef={iref} value={input} onChange={e => { setInput(e.target.value); sfx.type(); }} onEnter={submit} placeholder="뒤 두 글자를 입력하세요" glow={glow} />
             <SBtn onClick={submit} color="#f59e0b">→</SBtn>
           </div>
         ) : (

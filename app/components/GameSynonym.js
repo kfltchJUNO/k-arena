@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
+import { loadQuiz } from "@/lib/quizLoader";
 
 // ── GAME 6: 유의어 잇기 ───────────────────────────────────────
 const YD = [
@@ -10,7 +11,11 @@ const YD = [
 ];
 export default function GameSynonym({ onBack }) {
   const sfx = useSFX();
-  const [list] = useState(() => [...YD].sort(() => Math.random() - .5));
+  const [list, setList] = useState([]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadQuiz("quiz_synonym", YD, 20).then(items => { setList(items); setReady(true); });
+  }, []);
   const [idx, setIdx] = useState(0); const [score, setScore] = useState(0); const [time, setTime] = useState(60);
   const [input, setInput] = useState(""); const [phase, setPhase] = useState("playing");
   const [glow, setGlow] = useState(null); const [shake, setShake] = useState(false);
@@ -39,6 +44,8 @@ export default function GameSynonym({ onBack }) {
     } catch { val.length >= 2 ? passQ(val) : failQ(); }
     finally { setChecking(false); }
   };
+
+  if (!ready) return <Wrap><Mid><div style={{color:"#475569",fontSize:"0.85rem"}}>문제 불러오는 중...</div></Mid></Wrap>;
 
   if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setTime(60); setInput(""); setGlow(null); setHistory([]); setPhase("playing"); sfx.start(); setTimeout(() => iref.current?.focus(), 100); }} onBack={onBack} extra={[["정답", history.filter(h=>h.ok).length+"/"+list.length]]} detail={history} />;
   return (

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSFX, Wrap, Mid, Hdr, TBar, Card, TInput, SBtn, Ptcl, Rslt } from "@/lib/gameShared";
+import { loadQuiz } from "@/lib/quizLoader";
 
 // ── GAME 4: 연상 탐정 ────────────────────────────────────────
 const DET_FB = [
@@ -12,7 +13,11 @@ const DET_FB = [
 ];
 function GameDetective({ onBack }) {
   const sfx = useSFX();
-  const [list] = useState([...DET_FB].sort(()=>Math.random()-.5));
+  const [list, setList] = useState([]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadQuiz("quiz_homonym", DET_FB, 20).then(items => { setList(items); setReady(true); });
+  }, []);
   const [idx, setIdx] = useState(0); const [score, setScore] = useState(0);
   const [input, setInput] = useState(""); const [phase, setPhase] = useState("playing");
   const [glow, setGlow] = useState(null); const [shake, setShake] = useState(false); const [pt, setPt] = useState(0);
@@ -27,6 +32,8 @@ function GameDetective({ onBack }) {
       setTimeout(()=>{ if(idx+1>=list.length){setPhase("end");sfx.done();} else{setIdx(i=>i+1);setGlow(null);setInput("");setTimeout(()=>iref.current?.focus(),50);} },520);
     } else { setHistory(h=>[...h,{word:list[idx].word,ok:false,pts:0,reason:val?`입력: '${val}'`:null}]); setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(()=>{setShake(false);setGlow(null);setInput("");setTimeout(()=>iref.current?.focus(),40);},440); }
   };
+
+  if (!ready) return <Wrap><Mid><div style={{color:"#475569",fontSize:"0.85rem"}}>문제 불러오는 중...</div></Mid></Wrap>;
 
   if(phase==="end") return <Rslt score={score} maxScore={list.length*30} onRetry={()=>{setIdx(0);setScore(0);setGlow(null);setInput("");setHistory([]);setPhase("playing");setTimeout(()=>iref.current?.focus(),80);}} onBack={onBack} extra={[["정답",history.filter(h=>h.ok).length+"/"+list.length]]} detail={history}/>;
   const q=list[idx];
