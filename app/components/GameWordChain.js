@@ -8,7 +8,17 @@ export default function GameWordChain({ onBack }) {
   const [msgs, setMsgs] = useState([{from:"ai",text:"끝말잇기 시작! 먼저 단어를 입력해줘 😉"}]);
   const [input, setInput] = useState(""); const [loading, setLoading] = useState(false); const [score, setScore] = useState(0);
   const scrollRef = useRef(null); const iref = useRef(null);
-  useEffect(() => { if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
+  useEffect(() => {
+    if(scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [msgs]);
+  // FIX: 모바일 키보드 올라올 때 스크롤 유지
+  useEffect(() => {
+    const onResize = () => { if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; };
+    window.visualViewport?.addEventListener('resize', onResize);
+    return () => window.visualViewport?.removeEventListener('resize', onResize);
+  }, []);
   useEffect(() => setTimeout(()=>iref.current?.focus(),80), []);
 
   const send = async () => {
@@ -26,13 +36,13 @@ export default function GameWordChain({ onBack }) {
       if(json.valid){ setMsgs(p=>[...p,{from:"ai",text:json.reply}]); setScore(s=>s+10); sfx.correct(); }
       else { setMsgs(p=>[...p,{from:"ai",text:`땡! ${json.reason} 😅`}]); sfx.wrong(); }
     } catch(e) { setMsgs(p=>[...p,{from:"ai",text:"오류가 났어요. 다시 해줘!"}]); }
-    setLoading(false); setTimeout(()=>iref.current?.focus(),40);
+    setLoading(false); setTimeout(()=>iref.current?.focus(),100);
   };
 
   return (
     <Wrap>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 17px",flexShrink:0}}>
-        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <button onClick={() => onBack()} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
         <div style={{color:"#e2e8f0",fontWeight:900,fontSize:"0.95rem"}}>🧩 끝말잇기</div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end"}}><span style={{color:"#475569",fontSize:"0.6rem"}}>SCORE</span><span style={{color:"#fff",fontWeight:900}}>{score}</span></div>
       </div>
@@ -48,7 +58,7 @@ export default function GameWordChain({ onBack }) {
         {loading&&<div style={{color:"#475569",fontSize:"0.78rem",marginLeft:38,animation:"pulse 1s infinite"}}>AI 생각 중...</div>}
       </div>
       <div style={{padding:"11px 16px",display:"flex",gap:10,borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
-        <TInput value={input} onChange={e=>setInput(e.target.value)} onEnter={send} placeholder="한글 단어 입력"/>
+        <TInput inputRef={iref} value={input} onChange={e=>setInput(e.target.value)} onEnter={send} placeholder="한글 단어 입력"/>
         <SBtn onClick={send} disabled={loading}>{loading?"⏳":"→"}</SBtn>
       </div>
       <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();send();}}} onChange={e=>setInput(e.target.value)} value={input}/>

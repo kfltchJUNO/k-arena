@@ -20,10 +20,10 @@ export default function GameProverb({ onBack }) {
   const [pt, setPt] = useState(0); const [checking, setChecking] = useState(false);
   const [history, setHistory] = useState([]);
   const iref = useRef(null);
-  useEffect(() => setTimeout(() => iref.current?.focus(), 80), []);
+  useEffect(() => setTimeout(() => iref.current?.focus(), 100), []);
 
-  const passQ = v => { setScore(s => s + 20); setPt(p => p + 1); setGlow("correct"); setHistory(h => [...h, { word: list[idx].q, ok: true, pts: 20, reason: v !== list[idx].a ? `'${v}' 인정` : null }]); sfx.correct(); setTimeout(() => { if (idx + 1 >= list.length) { setPhase("end"); sfx.done(); } else { setIdx(i => i + 1); setInput(""); setGlow(null); setTimeout(() => iref.current?.focus(), 50); } }, 550); };
-  const failQ = () => { setHistory(h => [...h, { word: list[idx].q, ok: false, pts: 0, answer: list[idx].a }]); setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(() => { setShake(false); setGlow(null); setInput(""); setTimeout(() => iref.current?.focus(), 40); }, 460); };
+  const passQ = v => { setScore(s => s + 20); setPt(p => p + 1); setGlow("correct"); setHistory(h => [...h, { word: list[idx].q, ok: true, pts: 20, reason: v !== list[idx].a ? `'${v}' 인정` : null }]); sfx.correct(); setTimeout(() => { if (idx + 1 >= list.length) { setPhase("end"); sfx.done(); } else { setIdx(i => i + 1); setInput(""); setGlow(null); setTimeout(() => iref.current?.focus(), 100); } }, 550); };
+  const failQ = () => { setHistory(h => [...h, { word: list[idx].q, ok: false, pts: 0, answer: list[idx].a }]); setGlow("wrong"); setShake(true); sfx.wrong(); setTimeout(() => { setShake(false); setGlow(null); setInput(""); setTimeout(() => iref.current?.focus(), 100); }, 460); };
 
   const submit = async () => {
     const val = input.trim(); if (!val || checking) return;
@@ -37,7 +37,7 @@ export default function GameProverb({ onBack }) {
     finally { setChecking(false); }
   };
 
-  if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setInput(""); setGlow(null); setHistory([]); setPhase("playing"); setTimeout(() => iref.current?.focus(), 80); }} onBack={onBack} extra={[["정답", history.filter(h=>h.ok).length+"/"+list.length]]} detail={history} />;
+  if (phase === "end") return <Rslt score={score} maxScore={list.length * 20} onRetry={() => { setIdx(0); setScore(0); setInput(""); setGlow(null); setHistory([]); setPhase("playing"); setTimeout(() => iref.current?.focus(), 100); }} onBack={onBack} extra={[["정답", history.filter(h=>h.ok).length+"/"+list.length]]} detail={history} />;
   const q = list[idx];
   return (
     <Wrap>
@@ -54,7 +54,7 @@ export default function GameProverb({ onBack }) {
           </div>
         </Card>
         <div style={{ display: "flex", gap: 10, width: "100%", maxWidth: 400, marginTop: 14 }}>
-          <TInput value={input} onChange={e => { setInput(e.target.value); sfx.type(); }} onEnter={submit} placeholder="뒷부분을 입력하세요" glow={glow} />
+          <TInput inputRef={iref} value={input} onChange={e => { setInput(e.target.value); sfx.type(); }} onEnter={submit} placeholder="뒷부분을 입력하세요" glow={glow} />
           <SBtn onClick={submit} color="#10b981" disabled={checking}>{checking ? "⏳" : "→"}</SBtn>
         </div>
         <input ref={iref} style={{ position: "fixed", opacity: 0, pointerEvents: "none", width: 1, height: 1 }} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submit(); } }} onChange={e => setInput(e.target.value)} value={input} />

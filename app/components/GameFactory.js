@@ -43,12 +43,12 @@ export default function GameFactory({ onBack }) {
 
   if(verifying) return <Wrap><div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{fontSize:"2.2rem"}}>🤖</div><div style={{color:"#94a3b8",animation:"pulse 1s infinite"}}>사전 검증 중...</div></div></Wrap>;
 
-  if(phase==="done") return <Rslt score={score} maxScore={Math.max(score,20)} onRetry={()=>{ window.location.reload(); }} onBack={onBack} extra={[["단어수",words.length+"개"],["인정",detail.filter(d=>d.ok).length+"개"],["불인정",detail.filter(d=>!d.ok).length+"개"]]} detail={detail}/>;
+  if(phase==="done") return <Rslt score={score} maxScore={Math.max(score,20)} onRetry={() => { setWords([]); setInput(""); setScore(0); setDetail([]); setVerifying(false); setErr(""); setTime(60); setPhase("playing"); }} onBack={onBack} extra={[["단어수",words.length+"개"],["인정",detail.filter(d=>d.ok).length+"개"],["불인정",detail.filter(d=>!d.ok).length+"개"]]} detail={detail}/>;
 
   return (
     <Wrap>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 17px",flexShrink:0}}>
-        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <button onClick={() => onBack()} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           {tgts.map((c,i)=><div key={i} style={{width:44,height:44,borderRadius:11,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.4rem",fontWeight:900,color:"#fff"}}>{c}</div>)}
         </div>
@@ -61,7 +61,7 @@ export default function GameFactory({ onBack }) {
       </div>
       {err&&<div style={{textAlign:"center",color:"#ef4444",fontSize:"0.76rem",padding:"4px 16px"}}>{err}</div>}
       <div style={{padding:"11px 16px",display:"flex",gap:10,borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
-        <TInput value={input} onChange={e=>{setInput(e.target.value);sfx.type();}} onEnter={addWord} placeholder={`${tgts[0]}ㅏ${tgts[1]}ㅡ 형태의 2글자`}/>
+        <TInput inputRef={iref} value={input} onChange={e=>{setInput(e.target.value);sfx.type();}} onEnter={addWord} placeholder={`${tgts[0]}ㅏ${tgts[1]}ㅡ 형태의 2글자`}/>
         <SBtn onClick={addWord}>+</SBtn>
       </div>
       <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addWord();}}} onChange={e=>setInput(e.target.value)} value={input}/>

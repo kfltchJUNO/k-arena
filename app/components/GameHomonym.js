@@ -18,7 +18,7 @@ function GameDetective({ onBack }) {
   const [glow, setGlow] = useState(null); const [shake, setShake] = useState(false); const [pt, setPt] = useState(0);
   const [history, setHistory] = useState([]);
   const iref = useRef(null);
-  useEffect(()=>setTimeout(()=>iref.current?.focus(),80),[]);
+  useEffect(()=>{ setTimeout(()=>iref.current?.focus(),200); },[]);
 
   const submit = () => {
     const val=input.trim(); if(!val||!list[idx]) return;
@@ -33,7 +33,7 @@ function GameDetective({ onBack }) {
   return (
     <Wrap>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 17px",flexShrink:0}}>
-        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <button onClick={() => onBack()} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
         <div style={{color:"#e2e8f0",fontWeight:900,fontSize:"0.92rem"}}>🕵️ 연상 탐정</div>
         <div style={{color:"#fff",fontWeight:900}}>{score}</div>
       </div>
@@ -54,7 +54,7 @@ function GameDetective({ onBack }) {
           {glow==="wrong"&&<div style={{color:"#ef4444",textAlign:"center",fontSize:"0.82rem",marginTop:10}}>다시 생각해보세요!</div>}
         </Card>
         <div style={{display:"flex",gap:10,width:"100%",maxWidth:400,marginTop:14}}>
-          <TInput value={input} onChange={e=>{setInput(e.target.value);sfx.type();}} onEnter={submit} placeholder="정체는 바로..." glow={glow}/>
+          <TInput inputRef={iref} value={input} onChange={e=>{setInput(e.target.value);sfx.type();}} onEnter={submit} placeholder="정체는 바로..." glow={glow}/>
           <SBtn onClick={submit} color="#8b5cf6">🔍</SBtn>
         </div>
         <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submit();}}} onChange={e=>setInput(e.target.value)} value={input}/>

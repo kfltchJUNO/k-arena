@@ -38,13 +38,13 @@ export default function GameCategory({ onBack }) {
   if(verifying) return <Wrap><div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}><div style={{fontSize:"2.2rem"}}>🤖</div><div style={{color:"#94a3b8",animation:"pulse 1s infinite"}}>AI 채점 중...</div></div></Wrap>;
 
   if(phase==="done") return (
-    <Rslt score={score} maxScore={Math.max(score,20)} onRetry={()=>{ window.location.reload(); }} onBack={onBack} extra={[["단어수",words.length+"개"],["인정",detail.filter(d=>d.ok).length+"개"],["불인정",detail.filter(d=>!d.ok).length+"개"]]} detail={detail}/>
+    <Rslt score={score} maxScore={Math.max(score,20)} onRetry={() => { setWords([]); setInput(""); setScore(0); setDetail([]); setVerifying(false); setTime(40); setPhase("playing"); }} onBack={onBack} extra={[["단어수",words.length+"개"],["인정",detail.filter(d=>d.ok).length+"개"],["불인정",detail.filter(d=>!d.ok).length+"개"]]} detail={detail}/>
   );
 
   return (
     <Wrap>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 17px",flexShrink:0}}>
-        <button onClick={onBack} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
+        <button onClick={() => onBack()} style={{width:33,height:33,borderRadius:"50%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#64748b",cursor:"pointer",fontSize:"0.82rem"}}>✕</button>
         <div style={{textAlign:"center"}}><div style={{color:"#64748b",fontSize:"0.62rem"}}>주제</div><div style={{color:"#06b6d4",fontWeight:900,fontSize:"1.1rem"}}>{topic}</div></div>
         <div style={{color:time<=10?"#ef4444":"#94a3b8",fontWeight:700,fontSize:"1rem",animation:time<=10?"pulse 1s infinite":undefined}}>{time}s</div>
       </div>
@@ -54,7 +54,7 @@ export default function GameCategory({ onBack }) {
         {!words.length&&<div style={{color:"#1e293b",fontSize:"0.8rem"}}>단어를 최대한 많이 입력하세요!</div>}
       </div>
       <div style={{padding:"11px 16px",display:"flex",gap:10,borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
-        <TInput value={input} onChange={e=>setInput(e.target.value)} onEnter={addWord} placeholder="단어 입력 후 Enter"/>
+        <TInput inputRef={iref} value={input} onChange={e=>setInput(e.target.value)} onEnter={addWord} placeholder="단어 입력 후 Enter"/>
         <SBtn onClick={addWord} color="#06b6d4">+</SBtn>
       </div>
       <input ref={iref} style={{position:"fixed",opacity:0,pointerEvents:"none",width:1,height:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addWord();}}} onChange={e=>setInput(e.target.value)} value={input}/>
